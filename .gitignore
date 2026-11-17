@@ -1,0 +1,58 @@
+# Dependencies and package-manager state
+node_modules/
+dist/
+Caps-*.exe
+Caps.exe
+
+# Local model files (multi-gigabyte and separately licensed)
+models/
+whisperx/
+build/uv-cache/
+build/uv-python/
+build/downloads/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+/data/
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+caps-*/
+
+# Subtitle outputs and local transcripts (only curated test fixtures are tracked)
+*.srt
+!tests/fixtures/*.srt
+
+# Local media inputs
+*.aac
+*.avi
+*.flac
+*.mkv
+*.m4a
+*.mp3
+*.mp4
+*.mov
+*.ogg
+*.wav
+*.webm
+
+# Editors and operating systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Test and coverage output
+coverage/
+.nyc_output/
+tests/ui-responsive-results/
+
+# Local agent configuration and Python bytecode
+.codex/
+__pycache__/
+*.py[cod]

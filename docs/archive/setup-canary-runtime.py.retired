@@ -1,0 +1,53 @@
+"""Install the pinned Windows Canary runtime without changing WhisperX packages."""
+import argparse
+import hashlib
+from pathlib import Path
+import shutil
+import tarfile
+import tempfile
+import urllib.request
+
+VERSION = '0.4.1'
+HASHES = {
+    'cpu-vulkan': '272eb97795048ccb557c85bb9dd44c9e530e1c928443114c39816a8a5f76269d',
+    'cuda': 'ba43fb21a3fe0ab2630e0614fbd742e039c389c68ad10fe23aca903f986adc5b',
+}
+BINDINGS = ['__init__.py', '_abi.py', '_generated.py', '_library.py', 'errors.py', 'py.typed']
+
+
+def download(url, destination):
+    with urllib.request.urlopen(url, timeout=180) as source, destination.open('wb') as target:
+        shutil.copyfileobj(source, target)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--root', type=Path, default=Path(__file__).resolve().parent.parent / 'whisperx' / 'canary')
+    args = parser.parse_args()
+    root = args.root.resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    for kind, digest in HASHES.items():
+        with tempfile.TemporaryDirectory(dir=root) as temporary:
+            archive = Path(temporary) / 'runtime.tar.gz'
+            name = f'transcribe-native-{VERSION}-windows-x86_64-{kind}.tar.gz'
+            print(f'Downloading {name}', flush=True)
+            download(f'https://github.com/handy-computer/transcribe.cpp/releases/download/v{VERSION}/{name}', archive)
+            if hashlib.file_digest(archive.open('rb'), 'sha256').hexdigest() != digest:
+                raise RuntimeError('Canary runtime checksum does not match the pinned release.')
+            with tarfile.open(archive) as package:
+                package.extractall(Path(temporary) / 'extracted', filter='data')
+            extracted = next((Path(temporary) / 'extracted').iterdir())
+            destination = root / ('cpu' if kind == 'cpu-vulkan' else 'cuda')
+            shutil.copytree(extracted, destination, dirs_exist_ok=True)
+    binding = root / 'python' / 'transcribe_cpp'
+    binding.mkdir(parents=True, exist_ok=True)
+    base = f'https://raw.githubusercontent.com/handy-computer/transcribe.cpp/v{VERSION}/bindings/python/'
+    for name in BINDINGS:
+        download(base + 'src/transcribe_cpp/' + name, binding / name)
+    download(base + 'LICENSE', binding.parent / 'TRANSCRIBE_CPP_LICENSE')
+    (root / 'version.txt').write_text(VERSION + '\n', encoding='utf-8')
+    print(f'Canary runtime installed: {root}', flush=True)
+
+
+if __name__ == '__main__':
+    main()

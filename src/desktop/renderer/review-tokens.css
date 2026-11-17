@@ -1,0 +1,35 @@
+/* Scoped semantic tokens. A future light palette can override this block in
+   @media (prefers-color-scheme: light) without changing review components. */
+body.review-screen {
+  --r-font: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --r-caption: 14px; --r-time: 15px; --r-body: 16px; --r-cue: 18px; --r-section: 20px; --r-title: 28px;
+  --r-normal: 400; --r-semibold: 600;
+  --r-window: #202020; --r-card: #2A2A2A; --r-border: #363636;
+  --r-status: #1B1B1B; --r-status-border: #2E2E2E;
+  --r-control: #333333; --r-control-border: #3B3B3B;
+  --r-hover: #323232; --r-selected: #353535;
+  --r-text: #FFFFFF; --r-secondary: #C8C8C8;
+  --r-accent: var(--accent); --r-on-accent: #000000; --r-link: var(--accent-text);
+  --r-success: #6CCB5F; --r-caution: #FCE100;
+  --r-input: #1E1E1E; --r-input-border: #3C3C3C;
+  --r-track: #6A6A6A; --r-thumb: #454545; --r-thumb-border: #666666;
+  --r-tip: #2C2C2C; --r-tip-border: #484848;
+  --r-transparent: transparent; --r-hover-button: rgba(255,255,255,.08); --r-pressed: rgba(255,255,255,.04);
+  --r-backdrop: rgba(0,0,0,.4);
+  --r-0: 0px; --r-1: 4px; --r-2: 8px; --r-3: 12px; --r-4: 16px; --r-5: 20px; --r-6: 24px; --r-7: 28px; --r-8: 32px;
+  --r-hairline: 1px; --r-focus: 2px; --r-pill-width: 3px; --r-pill-height: 20px;
+  --r-radius: 8px; --r-control-radius: 4px; --r-icon-radius: 6px;
+  --r-button: 40px; --r-icon-button: 44px; --r-icon: 24px; --r-play-icon: 30px;
+  --r-row: 56px; --r-search: 290px; --r-time-column: 104px; --r-player: 460px;
+  --r-video-max: 376px; --r-video-min: 220px; --r-status-height: 44px; --r-native-titlebar: 64px;
+  /* Six 44px controls, six toolbar gaps, plus the card padding and border. */
+  --r-compact-player: calc(6 * var(--r-icon-button) + 6 * var(--r-1) + 2 * var(--r-4) + 2 * var(--r-hairline));
+  --r-video-short-min: 120px;
+  --r-track-height: 4px; --r-hit-area: 40px; --r-thumb-size: 22px; --r-dot: 12px; --r-unsaved: 8px;
+  --r-tip-gap: 10px; --r-tip-pad-y: 6px; --r-tip-pad-x: 10px;
+  --r-circle: 50%; --r-line-height: 1.5; --r-title-line-height: 1.25;
+  --r-speed-width: 112px; --r-volume-width: 140px; --r-dialog-width: 480px;
+  --r-scrollbar: 8px; --r-scrollbar-thumb: #808080;
+  --r-layer: 20; --r-tooltip-layer: 1000;
+  --r-motion: 120ms; --r-tooltip-delay: 400ms;
+}

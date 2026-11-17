@@ -1,0 +1,42 @@
+/* Settings joins the native caption controls without changing the drag region. */
+:root {
+  --chrome-controls-height: 64px;
+  --chrome-control-width: 46px;
+  --chrome-native-controls-width: 138px;
+  --chrome-icon-size: 16px;
+  --chrome-symbol-color: #ECECEF;
+  --chrome-button-hover: rgba(255, 255, 255, .1);
+  --chrome-separator-inset: 20px;
+  --chrome-focus-width: 2px;
+  --chrome-focus-inset: -4px;
+}
+.topbar { position: relative; }
+.topbar #settings-toggle {
+  position: absolute;
+  top: 0;
+  right: max(var(--chrome-native-controls-width), calc(100vw - env(titlebar-area-width, calc(100vw - var(--chrome-native-controls-width)))));
+  display: grid;
+  place-items: center;
+  width: var(--chrome-control-width);
+  height: var(--chrome-controls-height);
+  min-height: var(--chrome-controls-height);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--chrome-symbol-color);
+  box-shadow: none;
+  -webkit-app-region: no-drag;
+}
+.topbar #settings-toggle::before {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: var(--chrome-separator-inset);
+  bottom: var(--chrome-separator-inset);
+  border-right: 1px solid var(--line);
+  pointer-events: none;
+}
+.topbar #settings-toggle .ui-icon { width: var(--chrome-icon-size); height: var(--chrome-icon-size); }
+.topbar #settings-toggle:hover:not(:disabled) { background: var(--chrome-button-hover); color: var(--chrome-symbol-color); }
+.topbar #settings-toggle:focus-visible { outline: var(--chrome-focus-width) solid var(--accent); outline-offset: var(--chrome-focus-inset); }

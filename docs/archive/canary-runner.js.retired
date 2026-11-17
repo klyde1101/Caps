@@ -1,0 +1,43 @@
+import { readFileSync, existsSync } from 'node:fs';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { basename, dirname, extname, join, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
+import { CANARY_MODEL, CANARY_MODEL_FILE } from './model-catalog.js';
+import { findWhisperxRuntime, resolveModelSelection, runWhisperxProcess } from './whisperx-runner.js';
+import { CaptionJobError, ERROR_CODES, cancelledError } from './errors.js';
+
+const BOOTSTRAP = readFileSync(new URL('./canary-bootstrap.py', import.meta.url), 'utf8');
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+
+export async function transcribeCanaryBatch(paths, options = {}) {
+  if (!Array.isArray(paths) || !paths.length) throw new CaptionJobError(ERROR_CODES.INVALID_INPUT, 'At least one media input is required.');
+  if (options.signal?.aborted) throw cancelledError(options.signal.reason);
+  const root = process.env.PORTABLE_EXECUTABLE_DIR ?? ROOT;
+  const model = resolveModelSelection(options.model || CANARY_MODEL);
+  const modelFile = join(model, CANARY_MODEL_FILE);
+  if (!existsSync(modelFile)) throw new CaptionJobError(ERROR_CODES.MODEL_NOT_FOUND, 'Install Canary Qwen 2.5B in models/canary-qwen-2.5b before transcribing.');
+  const nativeDir = join(root, 'whisperx', 'canary');
+  const runtime = await findWhisperxRuntime({ explicitPath: options.whisperxPath, device: options.device });
+  if (basename(runtime.executable).toLowerCase() !== 'python.exe' || !existsSync(join(nativeDir, 'python', 'transcribe_cpp', '__init__.py'))) {
+    throw new CaptionJobError(ERROR_CODES.WHISPERX_NOT_FOUND, 'The Canary runtime is missing. Run scripts/setup-canary-runtime.py using the bundled Python.');
+  }
+  const outputDir = await mkdtemp(join(tmpdir(), 'caps-canary-'));
+  try {
+    await (options.runProcess ?? runWhisperxProcess)(runtime.executable, [
+      ...paths, '--model', modelFile, '--output_dir', outputDir,
+      '--native_dir', nativeDir, '--alignment_dir', join(root, 'models', 'alignment'),
+      '--recovery_model', resolveModelSelection('large-v3-turbo'),
+      '--device', options.device ?? 'auto', '--device_index', String(options.deviceIndex ?? 0)
+    ], { ...options, bootstrapSource: BOOTSTRAP, engineLabel: 'Canary' });
+    return await Promise.all(paths.map(async (path) => ({
+      srt: await readFile(join(outputDir, `${basename(path, extname(path))}.srt`), 'utf8'),
+      executable: runtime.executable, runtime
+    })));
+  } catch (error) {
+    if (/CUDA_UNAVAILABLE/.test(error.stderr ?? error.message)) throw new CaptionJobError(ERROR_CODES.CUDA_UNAVAILABLE, 'Canary cannot use the selected CUDA device. Choose CPU or Auto in Settings.', { cause: error });
+    throw error;
+  } finally {
+    await rm(outputDir, { recursive: true, force: true });
+  }
+}

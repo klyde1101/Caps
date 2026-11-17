@@ -1,0 +1,108 @@
+/* Shared Settings shell and General/Model presentation. */
+.settings {
+  --bg:#1b1b1f; --surface:#232328; --surface-hover:#26262c; --line:#34343b; --line-strong:#34343b;
+  --text:#f3f3f5; --muted:#b4b4c0; --accent:#a78bfa; --accent-text:#c4b5fd; --on-accent:#17131f;
+  --settings-active:#2d2d35; --settings-info:#1f1f24; --settings-segment:#17171b;
+  --settings-selected:#26232f; --settings-radio:#6c6c78; --settings-danger:#ff9b9b;
+  width:min(1160px,calc(100vw - 48px));
+}
+.settings #settings-title { font-size:26px; }
+.settings button { min-height:44px; font-size:16px; }
+.settings button:focus-visible,.settings select:focus-visible,.settings input:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.settings .settings-head { padding:24px 32px; }
+.settings .settings-layout { grid-template-columns:200px minmax(0,1fr); }
+.settings .settings-page { padding:26px 32px; }
+.settings .settings-page-heading { margin-bottom:16px; }
+.settings .settings-page-heading p { font-size:14px; }
+.settings .settings-navigation { padding:20px 16px; }
+.settings .settings-navigation [role=tablist] { gap:4px; }
+.settings .settings-navigation .settings-nav-item { position:relative; height:48px; padding:0 16px; border:0; border-radius:8px; font-size:16px; font-weight:400; background:transparent; color:var(--muted); transition:background-color 120ms ease,color 120ms ease; }
+.settings .settings-navigation .settings-nav-item:hover { background:var(--surface-hover); color:var(--text); }
+.settings .settings-navigation .settings-nav-item:active { background:var(--settings-active); }
+.settings .settings-navigation .settings-nav-item.active,.settings .settings-navigation .settings-nav-item.active:hover { background:var(--settings-active); color:var(--text); font-weight:600; }
+.settings-nav-item.active::before { content:''; position:absolute; inset:12px auto 12px 0; width:3px; border-radius:2px; background:var(--accent); }
+.settings .settings-hardware { display:none; }
+.settings .device-recommendation { border:1px solid var(--line); border-radius:10px; padding:16px 20px; gap:16px; background:var(--settings-info); }
+.settings .recommendation-icon { width:28px; height:28px; color:var(--accent); flex:none; }
+.settings .device-recommendation p { margin-top:4px; }
+.settings #use-automatic { min-height:44px; border-radius:8px; background:var(--surface); }
+.settings .settings-fields { margin-top:12px; gap:12px; }
+.settings .settings-row { padding:20px 24px; border:1px solid var(--line); border-radius:10px; background:var(--surface); }
+.settings .device-field > label { font-weight:600; }
+.settings .device-segments { display:flex; gap:4px; margin-top:12px; padding:4px; border:1px solid var(--line); border-radius:10px; background:var(--settings-segment); }
+.settings .device-segments button { display:flex; align-items:center; justify-content:center; flex:1; min-width:0; min-height:44px; height:44px; padding:8px; background:transparent; border:0; border-radius:7px; font-size:14px; white-space:nowrap; }
+.settings .device-segments button::before,.settings .device-segments button::after { content:none; }
+.settings .device-segments button[aria-pressed=true]::before,.settings .device-segments button[aria-pressed=true]::after { content:none; }
+.settings .device-segments button[aria-checked=true] { background:#3a3354; color:var(--text); box-shadow:inset 0 0 0 1px var(--accent); }
+.settings .device-description { margin:14px 0 0; font-size:14px; line-height:21px; color:var(--muted); }
+.settings .settings-fields .gpu-choice { display:flex; flex-direction:row; align-items:center; justify-content:space-between; gap:16px; }
+.settings .gpu-choice > span { display:grid; gap:4px; }
+.settings .gpu-choice strong { font-size:16px; font-weight:600; }
+.settings .gpu-choice small { font-size:14px; color:var(--muted); font-weight:400; }
+.settings #setting-device-index { min-width:300px; max-width:60%; border-radius:8px; font-size:14px; }
+.settings .model-cards { gap:16px; }
+.settings .model-choice { padding:24px; border:1px solid var(--line); border-radius:12px; min-height:308px; cursor:pointer; }
+.settings .model-choice:has(input:checked) { border:1px solid var(--accent); outline:1px solid var(--accent); outline-offset:-2px; background:var(--settings-selected); }
+.settings .model-card-header { grid-template-columns:32px minmax(0,1fr) auto; gap:4px 10px; padding-right:0; }
+.settings .model-choice .model-name { font-size:20px; line-height:27px; }
+.settings .model-choice input[type=radio] { width:32px; height:44px; min-height:44px; }
+.settings .model-choice input[type=radio]::before { border:2px solid var(--settings-radio); }
+.settings .model-choice input[type=radio]:checked::before { background:var(--accent); border-color:var(--accent); }
+.settings .model-choice input[type=radio]:checked::after { background:var(--on-accent); }
+.settings .model-choice input[type=radio]::before,.settings .model-choice input[type=radio]:checked::after { left:50%; top:50%; transform:translate(-50%,-50%); box-sizing:border-box; }
+.settings .model-choice input[type=radio]::before { width:20px; height:20px; }
+.settings .model-choice input[type=radio]:checked::after { width:8px; height:8px; }
+.settings .model-choice input[type=radio]:checked::after { content:none; }
+.settings #setting-device-index { font-weight:400; }
+.settings .model-actions { grid-column:3; grid-row:1 / 3; justify-content:flex-end; }
+.settings .model-actions button,.settings [data-cancel],.settings .diagnostics-actions button { min-height:44px; height:44px; }
+.settings .model-choice-status { font-size:14px; }
+.settings #model-cards .model-specs { gap:32px; }
+.settings .model-choice:has(input:focus-visible) { outline:2px solid var(--accent); outline-offset:2px; }
+.settings .model-specs dt { font-size:13px; line-height:20px; }
+.settings .model-specs dd { font-size:20px; font-weight:600; line-height:28px; }
+.settings .model-management { padding-top:16px; min-height:60px; gap:8px; }
+.settings .model-management button { min-height:44px; height:44px; font-size:14px; padding:8px 10px; }
+.settings .model-selected-check { color:var(--accent-text); font-size:14px; }
+.settings .model-choice:not(:has(input:checked)) .model-selected-check { display:none; }
+.settings .model-management .model-delete { min-height:44px; height:44px; border:0; }
+.settings .model-management .model-delete:hover:not(:disabled) { color:var(--settings-danger); background:#2a2a31; }
+.settings .settings-estimate-note { padding:16px 20px; border:1px solid var(--line); border-radius:10px; background:var(--settings-info); }
+.settings .settings-estimate-note::before { content:'ⓘ'; margin-right:12px; color:var(--accent-text); }
+.settings .settings-footer { padding:16px 32px; }
+.settings #restore-settings { min-height:44px; }
+@media(max-width:1050px) {
+  .settings .settings-layout { grid-template-columns:160px minmax(0,1fr); }
+  .settings .settings-page { padding:20px 24px; }
+  .settings .settings-row { padding:16px 20px; }
+  .settings .model-choice { padding:18px; }
+  .settings .model-management { flex-wrap:wrap; }
+  .settings #setting-device-index { min-width:260px; }
+}
+@media(max-width:750px) {
+  .settings .settings-layout { grid-template-columns:130px minmax(0,1fr); }
+  .settings .gpu-choice { flex-wrap:wrap; }
+  .settings #setting-device-index { min-width:0; max-width:100%; width:100%; }
+  .settings .device-segments { flex-direction:column; }
+  .settings .model-cards { grid-template-columns:1fr; }
+}
+/* General fits the supported 1000x700 minimum without a scrolling pane. */
+.settings #settings-general { overflow: hidden; padding: clamp(14px, 2.2vh, 26px) clamp(20px, 2.7vw, 32px); }
+.settings #settings-general .settings-page-heading { margin-bottom: clamp(8px, 1.5vh, 16px); }
+.settings #settings-general .device-recommendation { padding: clamp(10px, 1.4vh, 16px); gap: 12px; }
+.settings #settings-general .device-recommendation strong { font-size: clamp(14px, 1.25vw, 16px); line-height: 1.4; }
+.settings #settings-general .device-recommendation p { font-size: clamp(13px, 1.1vw, 14px); line-height: 1.4; }
+.settings #settings-general .settings-fields { margin-top: clamp(8px, 1.2vh, 12px); gap: clamp(8px, 1.2vh, 12px); }
+.settings #settings-general .settings-row { padding: clamp(10px, 1.7vh, 20px) clamp(14px, 2vw, 24px); }
+.settings #settings-general .device-segments { margin-top: 8px; }
+.settings #settings-general .device-description { margin-top: 8px; font-size: 13px; line-height: 1.4; }
+.settings #settings-general .gpu-choice small { font-size: 13px; }
+.settings #settings-general #setting-device-index { min-width: 0; width: min(300px, 60%); }
+@media(max-height:800px) {
+  .settings .settings-head { padding: 14px 24px; }
+  .settings .settings-intro { margin-top: 4px; }
+  .settings .settings-footer { min-height: 68px; padding: 10px 24px; }
+  .settings #settings-general .settings-page-heading h3 { font-size: 21px; line-height: 28px; }
+  .settings #settings-general .recommendation-icon { width: 22px; height: 22px; }
+  .settings #settings-general .device-segments button { height: 40px; min-height: 40px; }
+}

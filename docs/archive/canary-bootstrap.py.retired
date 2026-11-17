@@ -1,0 +1,172 @@
+"""Offline Canary Qwen recognition followed by WhisperX word alignment."""
+import argparse
+import gc
+import json
+import os
+from pathlib import Path
+import sys
+
+
+def progress(index, phase, percent):
+    print('[CapsProgress] ' + json.dumps({'fileIndex': index, 'phase': phase, 'percent': percent}), flush=True)
+
+
+def chunks(audio, sample_rate=16000):
+    """Prefer a quiet boundary, keeping every sample and staying below 30 seconds."""
+    import numpy as np
+    start = 0
+    limit = 30 * sample_rate
+    window = sample_rate // 10
+    while start < len(audio):
+        end = min(start + limit, len(audio))
+        if end < len(audio):
+            search = start + 22 * sample_rate
+            candidates = range(search, end - window + 1, window)
+            quiet = min(candidates, key=lambda offset: float(np.mean(audio[offset:offset + window] ** 2)))
+            end = quiet + window // 2
+        yield start, end
+        start = end
+
+
+def timestamp(seconds):
+    total = max(0, round(seconds * 1000))
+    hours, remainder = divmod(total, 3600000)
+    minutes, remainder = divmod(remainder, 60000)
+    seconds, millis = divmod(remainder, 1000)
+    return f'{hours:02}:{minutes:02}:{seconds:02},{millis:03}'
+
+
+def recognize_block(session, audio, start, end, incomplete_error, sample_rate=16000):
+    """Retry incomplete decodes on smaller audio; never accept partial text as complete."""
+    import numpy as np
+    block = audio[start:end]
+    if np.max(np.abs(block), initial=0) <= 0.00001:
+        return []
+    try:
+        text = session.run(block, language='en', timestamps='none').text.strip()
+        return [{'start': start / sample_rate, 'end': end / sample_rate, 'text': text}] if text else []
+    except incomplete_error:
+        if end - start <= 4 * sample_rate:
+            # Filled using Turbo after native weights have been released.
+            print(f'[Caps] Canary needs Turbo recovery at {start / sample_rate:.2f}s–{end / sample_rate:.2f}s.', flush=True)
+            return [{'start': start / sample_rate, 'end': end / sample_rate, 'recovery': True}]
+        midpoint = start + (end - start) // 2
+        print(f'[Caps] Retrying incomplete Canary decode in shorter sections at {start / sample_rate:.2f}s.', flush=True)
+        return (recognize_block(session, audio, start, midpoint, incomplete_error, sample_rate)
+                + recognize_block(session, audio, midpoint, end, incomplete_error, sample_rate))
+
+
+def recover_segments(segments, audio, turbo):
+    """Recover only failed sections, preserving their absolute position in the file."""
+    recovered = []
+    for segment in segments:
+        if not segment.get('recovery'):
+            recovered.append(segment)
+            continue
+        start, end = segment['start'], segment['end']
+        result = turbo.transcribe(audio[round(start * 16000):round(end * 16000)], batch_size=1)
+        for part in result['segments']:
+            if part['text'].strip():
+                recovered.append({'start': start + part['start'], 'end': min(end, start + part['end']), 'text': part['text']})
+    return recovered
+
+
+def write_words(result, destination):
+    words = result['word_segments']
+    if not words:
+        raise RuntimeError('Canary did not detect speech to caption.')
+    cues = []
+    for word in words:
+        text = word['word'].strip()
+        if not text:
+            continue
+        if 'start' not in word or 'end' not in word or word['end'] <= word['start']:
+            raise RuntimeError(f'Could not align the word {text!r}. Correct the transcript or try a Whisper model.')
+        cues.append(f'{len(cues) + 1}\n{timestamp(word["start"])} --> {timestamp(word["end"])}\n{text}\n')
+    destination.write_text('\n'.join(cues), encoding='utf-8')
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('inputs', nargs='+')
+    parser.add_argument('--model', required=True)
+    parser.add_argument('--output_dir', required=True)
+    parser.add_argument('--native_dir', required=True)
+    parser.add_argument('--alignment_dir', required=True)
+    parser.add_argument('--recovery_model', required=True)
+    parser.add_argument('--device', choices=['auto', 'cpu', 'cuda'], default='auto')
+    parser.add_argument('--device_index', type=int, default=0)
+    args = parser.parse_args()
+    handles = []
+    ffmpeg_dir = os.environ.get('CAPS_FFMPEG_DIRECTORY')
+    if os.name == 'nt' and ffmpeg_dir:
+        handles.append(os.add_dll_directory(ffmpeg_dir))
+    import numpy as np
+    # Loading torch first supplies the CUDA libraries shared with the native engine.
+    import torch
+    use_cuda = args.device != 'cpu' and torch.cuda.is_available()
+    if args.device == 'cuda' and not use_cuda:
+        raise RuntimeError('CUDA_UNAVAILABLE: PyTorch cannot use CUDA.')
+    if use_cuda and args.device_index >= torch.cuda.device_count():
+        raise RuntimeError('CUDA_UNAVAILABLE: The selected GPU does not exist.')
+    native = Path(args.native_dir) / ('cuda' if use_cuda else 'cpu')
+    if os.name == 'nt':
+        handles.append(os.add_dll_directory(str(native)))
+    os.environ['TRANSCRIBE_LIBRARY'] = str(native / 'transcribe.dll')
+    sys.path.insert(0, str(Path(args.native_dir) / 'python'))
+    import transcribe_cpp
+    devices = [device for device in transcribe_cpp.backends() if device.kind == ('cuda' if use_cuda else 'cpu')]
+    index = args.device_index if use_cuda else 0
+    if index >= len(devices):
+        if args.device == 'cuda':
+            raise RuntimeError('CUDA_UNAVAILABLE: Canary cannot initialize the selected GPU.')
+        use_cuda = False
+        devices = [device for device in transcribe_cpp.backends() if device.kind == 'cpu']
+        index = 0
+    device = f'cuda:{args.device_index}' if use_cuda else 'cpu'
+    if use_cuda:
+        torch.cuda.set_device(args.device_index)
+    print(f'Canary Qwen 2.5B · Q8_0 · {devices[index].name}', flush=True)
+    from whisperx.audio import load_audio
+    transcripts = []
+    # Release all native GPU allocations before the alignment model is loaded.
+    with transcribe_cpp.Model(args.model, device=devices[index]) as model:
+        with model.session(n_ctx=2048) as session:
+            for file_index, source in enumerate(args.inputs):
+                progress(file_index, 'transcribing', 0)
+                audio = load_audio(source)
+                segments = []
+                for start, end in chunks(audio):
+                    block = audio[start:end]
+                    if np.max(np.abs(block), initial=0) > 0.00001:
+                        segments.extend(recognize_block(session, audio, start, end, transcribe_cpp.errors.OutputTruncated))
+                    progress(file_index, 'transcribing', 70 * end / max(1, len(audio)))
+                transcripts.append(segments)
+                progress(file_index, 'awaiting-alignment', 70)
+    gc.collect()
+    if use_cuda:
+        torch.cuda.empty_cache()
+    import whisperx
+    if any(segment.get('recovery') for segments in transcripts for segment in segments):
+        turbo = whisperx.load_model(args.recovery_model, 'cuda' if use_cuda else 'cpu',
+            device_index=args.device_index, language='en', local_files_only=True)
+        for file_index, segments in enumerate(transcripts):
+            transcripts[file_index] = recover_segments(segments, load_audio(args.inputs[file_index]), turbo)
+        del turbo
+        gc.collect()
+        if use_cuda:
+            torch.cuda.empty_cache()
+    align_model, metadata = whisperx.load_align_model(language_code='en', device=device,
+        model_dir=args.alignment_dir, model_cache_only=True)
+    for file_index, (source, segments) in enumerate(zip(args.inputs, transcripts)):
+        progress(file_index, 'aligning', 70)
+        def aligned_fraction(fraction, index=file_index):
+            progress(index, 'aligning', 70 + 0.25 * fraction)
+        result = whisperx.align(segments, align_model, metadata, load_audio(source), device,
+            interpolate_method='linear', progress_callback=aligned_fraction)
+        write_words(result, Path(args.output_dir) / (Path(source).stem + '.srt'))
+        progress(file_index, 'aligning', 100)
+
+
+if __name__ == '__main__':
+    main()

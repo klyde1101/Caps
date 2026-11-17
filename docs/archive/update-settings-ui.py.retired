@@ -1,0 +1,93 @@
+from pathlib import Path
+root = Path(__file__).resolve().parents[1]
+path = root / 'src/desktop/renderer/index.html'
+s = path.read_text(encoding='utf-8').replace('Canary + WhisperX', 'WhisperX')
+s = s.replace('      <p id="smart-status" class="muted" role="status"></p>\n', '')
+start = s.index('    <div class="settings-head">')
+end = s.index('      <details class="settings-disclosure">', start)
+s = s[:start] + '''    <div class="settings-head"><div><h2 id="settings-title">Settings</h2><p class="settings-intro">Transcription and caption preferences</p></div><button id="settings-close" class="ghost icon-only" type="button" aria-label="Close settings"><span class="material-icon symbol-close" aria-hidden="true"></span></button></div>
+    <div class="settings-scroll">
+      <p id="hardware-summary" class="hardware-summary">Detecting system memory and graphics.</p>
+      <section class="settings-card"><div class="settings-section-heading"><div><h3>Processing</h3><p>Run locally with WhisperX.</p></div></div>
+        <label>Processing device<select id="setting-device" aria-describedby="device-help"><option value="auto">Automatic (recommended)</option><option value="cpu">CPU</option><option id="setting-cuda-option" value="cuda">NVIDIA CUDA</option></select><small id="device-help" class="field-help" role="status">Detecting CUDA devices.</small></label>
+        <label id="device-index-field" hidden><span id="device-index-label">NVIDIA GPU device</span><select id="setting-device-index" aria-describedby="device-help"><option value="0">Detecting available GPUs.</option></select></label>
+      </section>
+      <section class="settings-card"><div class="settings-section-heading"><div><h3>Model</h3><p>Choose accuracy or a smaller footprint.</p></div><span id="model-status" class="model-status" role="status">Checking</span></div>
+        <select id="setting-model" hidden aria-hidden="true" tabindex="-1"><option value="large-v3-turbo">Large v3 Turbo</option><option value="small">Small</option></select>
+        <fieldset class="model-options" aria-describedby="model-help"><legend class="sr-only">WhisperX transcription model</legend>
+          <div class="model-choice">
+            <span class="model-info"><button type="button" class="info-button" aria-label="Large v3 Turbo memory requirements" aria-describedby="requirements-large-v3-turbo">i</button><span id="requirements-large-v3-turbo" class="model-tooltip" role="tooltip">Checking requirements.</span></span>
+            <label><input type="radio" name="transcription-model" value="large-v3-turbo"><span><strong>Large v3 Turbo</strong><small class="model-choice-status">Checking hardware</small></span></label>
+          </div>
+          <div class="model-choice">
+            <span class="model-info"><button type="button" class="info-button" aria-label="Small memory requirements" aria-describedby="requirements-small">i</button><span id="requirements-small" class="model-tooltip" role="tooltip">Checking requirements.</span></span>
+            <label><input type="radio" name="transcription-model" value="small"><span><strong>Small</strong><small class="model-choice-status">Checking hardware</small></span></label>
+          </div>
+        </fieldset>
+        <p id="model-help" class="field-help" role="status">Checking installed models.</p>
+      </section>
+''' + s[end:]
+path.write_text(s, encoding='utf-8')
+path = root / 'src/desktop/renderer/styles.css'
+s = path.read_text(encoding='utf-8')
+# Remove unused Smart Mode rules, leaving the main workspace design unchanged.
+import re
+s = re.sub(r'^.*(?:performance-card|smart-mode-control).*\n', '', s, flags=re.M)
+s += '''
+/* Settings: quiet surfaces, consistent baselines, and one place for each choice. */
+.settings { inset: 16px 16px 16px auto; width: min(760px, calc(100% - 32px)); border-radius: 12px; box-shadow: 0 18px 64px #0008; }
+.settings-head { padding: 20px 24px; align-items: center; }
+.settings-head h2 { font-size: 23px; letter-spacing: -.02em; }
+.settings-intro { display: block; margin-top: 5px; font-size: 12px; }
+.settings-scroll { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-content: start; padding: 18px 24px; scrollbar-gutter: auto; }
+.hardware-summary { grid-column: 1 / -1; margin: 0; padding-bottom: 14px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 12px; line-height: 1.5; }
+.settings-card { margin: 0; padding: 0; background: none; border: 0; border-radius: 0; min-width: 0; }
+.settings-section-heading { min-height: 44px; align-items: start; justify-content: space-between; gap: 8px; margin-bottom: 14px; }
+.settings-section-heading h3 { font-size: 14px; }
+.settings-section-heading p { margin-top: 5px; font-size: 12px; line-height: 1.5; }
+.settings label { gap: 7px; margin: 0 0 14px; font-size: 12px; }
+.settings select, .settings input[type="number"] { width: 100%; min-height: 38px; padding: 8px 10px; font-size: 12px; border-radius: 6px; }
+.settings .field-help { font-size: 11px; line-height: 1.5; font-weight: 400; }
+.settings-disclosure { grid-column: 1 / -1; margin: 0; padding: 0; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: none; }
+.settings-disclosure > summary { min-height: 40px; padding: 12px 0; font-size: 12px; font-weight: 500; }
+.settings-disclosure > summary .material-icon { display: none; }
+.settings-disclosure > summary > span:not(.material-icon) { display: none; }
+.settings-disclosure[open] { padding-bottom: 8px; }
+.settings-disclosure[open] > summary { margin-bottom: 0; }
+.settings-actions { padding: 14px 24px; gap: 12px; }
+.settings-actions button { height: 38px; font-size: 12px; border-radius: 6px; }
+.settings-actions .material-icon { display: none; }
+.developer-credit { padding: 0 24px 12px; font-size: 10px; }
+.model-options { border: 0; margin: 0; padding: 0; min-width: 0; display: grid; gap: 8px; }
+.model-choice { position: relative; display: flex; align-items: center; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 7px; }
+.model-choice:has(input:checked) { border-color: var(--accent-control); background: var(--accent-soft); }
+.model-choice[data-disabled="true"] label { opacity: .45; cursor: not-allowed; }
+.settings .model-choice label { display: flex; flex: 1; align-items: center; gap: 8px; margin: 0; cursor: pointer; min-width: 0; }
+.settings .model-choice input[type="radio"] { flex: none; appearance: auto; width: 14px; height: 14px; min-height: 0; margin: 0; padding: 0; accent-color: var(--accent-control); }
+.model-choice label > span { display: grid; gap: 3px; }
+.model-choice strong { font-size: 12px; font-weight: 500; }
+.model-choice-status { font-size: 10px; color: var(--muted); font-weight: 400; }
+.settings .info-button { display: grid; place-items: center; width: 19px; height: 19px; min-height: 0; padding: 0; border-radius: 50%; border: 1px solid var(--muted); color: var(--muted); background: transparent; font: 600 12px Georgia, serif; cursor: help; }
+.model-info { display: inline-flex; }
+.model-tooltip { position: absolute; z-index: 20; bottom: calc(100% + 6px); left: 0; right: 0; padding: 12px; border: 1px solid var(--line-strong); border-radius: 7px; background: #242329; color: var(--text); font-size: 11px; line-height: 1.6; box-shadow: 0 6px 24px #0008; visibility: hidden; opacity: 0; pointer-events: none; }
+.model-info:hover .model-tooltip, .model-info:focus-within .model-tooltip { visibility: visible; opacity: 1; pointer-events: auto; }
+#model-help { margin: 10px 0 0; }
+.settings .model-status { font-size: 10px; white-space: nowrap; padding: 3px 6px; }
+.number-grid { align-items: start; }
+.number-grid label { margin: 0; }
+#diagnostics > div { display: grid; grid-template-columns: 68px minmax(0, 1fr); gap: 12px; }
+#diagnostics dd { margin: 0; overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+  .settings { inset: 0; width: 100%; border-radius: 0; }
+  .settings-scroll { grid-template-columns: minmax(0, 1fr); padding: 16px 18px; }
+  .settings-head { padding: 16px 18px; }
+  .settings-section-heading { min-height: 0; }
+  .settings-actions { padding: 12px 18px; }
+}
+@media (max-height: 710px) and (min-width: 900px) {
+  .settings-head { padding-block: 12px; }
+  .settings-scroll { padding-block: 12px; gap: 12px; }
+  .settings-intro { display: none; }
+}
+'''
+path.write_text(s, encoding='utf-8')

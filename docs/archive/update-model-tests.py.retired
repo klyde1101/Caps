@@ -1,0 +1,63 @@
+from pathlib import Path
+import re
+root = Path(__file__).resolve().parents[1]
+for filename in ['tests/deferred-alignment.test.js', 'tests/model-selection.test.js', 'tests/system-diagnostics.test.js', 'tests/desktop-shell.test.js']:
+    p = root / filename
+    s = p.read_text(encoding='utf-8')
+    if filename.endswith('deferred-alignment.test.js'):
+        if "test('queue worker releases Canary" in s:
+            s = s[:s.index("test('queue worker releases Canary")]
+        s = s.replace("'--native_dir', '.', ", '').replace("'--recovery_model', '.', ", '')
+    s = s.replace('canary-qwen-2.5b', 'small').replace('Canary Qwen 2.5B', 'Small')
+    if filename.endswith('model-selection.test.js'):
+        s = s.replace('Canary is the default and Turbo is the only Whisper model choice', 'Turbo is the default and Small is supported by WhisperX')
+        s = s.replace("assert.equal(DEFAULT_MODEL, 'small');", "assert.equal(DEFAULT_MODEL, TURBO);")
+        s = s.replace("['small', TURBO]", "[TURBO, 'small']")
+        s = s.replace('for (const model of [TURBO])', "for (const model of [TURBO, 'small'])")
+        s = s.replace("assert.throws(() => validateStartRequest({ inputPath: 'C:\\\\Media\\\\clip.mp4', model: 'small' }), { code: 'INVALID_REQUEST' });", "assert.throws(() => validateStartRequest({ inputPath: 'C:\\\\Media\\\\clip.mp4', model: 'canary-qwen-2.5b' }), { code: 'INVALID_REQUEST' });")
+        s = s.replace('assert.equal(defaultModel(), DEFAULT_MODEL);', 'assert.equal(defaultModel(), modelPath);')
+    if filename.endswith('desktop-shell.test.js'):
+        s = s.replace('to the Canary default', 'to the WhisperX default')
+        s = s.replace(".model, 'small'", ".model, 'large-v3-turbo'")
+        s = '\n'.join(line for line in s.split('\n') if 'assert.match(html, /<select id="setting-engine"' not in line)
+    if filename.endswith('system-diagnostics.test.js'):
+        # Catalog order is Turbo followed by Small.
+        lines = s.splitlines()
+        for i, line in enumerate(list(lines)):
+            if "{ id: 'small'" in line:
+                lines[i], lines[i+1] = lines[i+1].rstrip(',') + ',', lines[i].rstrip(',')
+        s = '\n'.join(lines) + '\n'
+    p.write_text(s, encoding='utf-8')
+
+p = root / 'tests/ui-responsive-harness/main.cjs'
+s = p.read_text(encoding='utf-8')
+s = '\n'.join(line for line in s.split('\n') if "document.querySelector('#smart-status')" not in line)
+start = s.index('  const engineChecks = ')
+end = s.index('  // Exercise the actual dialog controls', start)
+s = s[:start] + '''  const modelChecks = await window.webContents.executeJavaScript(`(() => {
+    const panel = document.querySelector('#settings-panel'); panel.hidden = false;
+    const device = document.querySelector('#setting-device');
+    const gpu = document.querySelector('#setting-device-index');
+    device.value = 'cuda'; device.dispatchEvent(new Event('change'));
+    gpu.value = '1'; gpu.dispatchEvent(new Event('change'));
+    const turbo = document.querySelector('input[name="transcription-model"][value="large-v3-turbo"]');
+    const small = document.querySelector('input[name="transcription-model"][value="small"]');
+    if (!turbo.disabled || small.disabled) throw new Error('Low VRAM model gating failed');
+    device.value = 'cpu'; device.dispatchEvent(new Event('change'));
+    if (turbo.disabled) throw new Error('CPU fallback was incorrectly disabled');
+    small.click();
+    if (document.querySelector('#setting-model').value !== 'small') throw new Error('Small selection failed');
+    const info = document.querySelector('.info-button'); info.focus();
+    if (getComputedStyle(document.querySelector('.model-tooltip')).visibility !== 'visible') throw new Error('Keyboard tooltip is hidden');
+    document.querySelector('input[name="transcription-model"][value="large-v3-turbo"]').click();
+    panel.hidden = true;
+    return { lowVramGating: true, cpuFallback: true, smallSelectable: true, keyboardTooltip: true };
+  })()`);
+  await writeFile(path.join(outputDirectory, 'model-checks.json'), JSON.stringify(modelChecks, null, 2));
+''' + s[end:]
+# The two info controls deliberately use compact hit areas; only check viewport for buttons.
+p.write_text(s, encoding='utf-8')
+p = root / 'tests/ui-responsive-harness/preload.cjs'
+s = p.read_text(encoding='utf-8').replace("    appVersion: '1.0.0',", "    memory: { totalBytes: 32 * 1024 ** 3, freeBytes: 20 * 1024 ** 3 },\n    runtimes: { cpu: { available: true }, cuda: { available: true } },\n    appVersion: '1.0.0',")
+s = s.replace("models: [{ id:", "models: [{ id: 'small', label: 'Small', installed: true, sizeBytes: 484000000 }, { id:")
+p.write_text(s, encoding='utf-8')

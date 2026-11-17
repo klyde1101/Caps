@@ -1,0 +1,4 @@
+{
+  "large-v3-turbo": { "repoId": "mobiuslabsgmbh/faster-whisper-large-v3-turbo", "focus": "Accuracy focused" },
+  "small": { "repoId": "Systran/faster-whisper-small", "focus": "Faster and lighter" }
+}

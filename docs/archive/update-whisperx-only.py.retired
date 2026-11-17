@@ -1,0 +1,185 @@
+"""One-time source migration for the WhisperX-only release."""
+from pathlib import Path
+import re
+
+ROOT = Path(__file__).resolve().parents[1]
+def edit(name, transform):
+    path = ROOT / name
+    path.write_text(transform(path.read_text(encoding='utf-8')), encoding='utf-8')
+
+def runner(s):
+    s = s.replace('AVAILABLE_MODELS, CANARY_MODEL, CANARY_MODEL_FILE, isSupportedModel', 'AVAILABLE_MODELS, isSupportedModel')
+    s = s.replace("model === 'large-v3-turbo' ? env.CAPS_MODEL : model === CANARY_MODEL ? env.CAPS_CANARY_MODEL : undefined", "model === DEFAULT_MODEL ? env.CAPS_MODEL : undefined")
+    s = re.sub(r'  if \(basename\(model\) === CANARY_MODEL.*?\n  }\n', '', s, flags=re.S)
+    s = s.replace('id !== CANARY_MODEL && ', '')
+    s = s.replace('Only Large v3 Turbo is supported by the WhisperX engine.', 'Choose Large v3 Turbo or Small for WhisperX.')
+    return s
+edit('src/whisperx-runner.js', runner)
+
+def queue(s):
+    s = s.replace('existsSync, ', '').replace('basename, dirname', 'basename, dirname')
+    s = s.replace('tmpdir, cpus, freemem, totalmem', 'tmpdir')
+    s = re.sub(r"import .*from './(?:media-duration|smart-scheduler|model-catalog)\.js';\n", '', s)
+    s = s.replace('isCanarySelection, defaultModel', 'defaultModel')
+    s = re.sub(r'const BOOTSTRAP = .*?;\n', "const BOOTSTRAP = readFileSync(new URL('./transcription-worker.py', import.meta.url), 'utf8');\n", s, count=1)
+    s = s.replace('Install Large v3 Turbo in models/large-v3-turbo beside Caps to recover sections Canary could not decode.', 'The selected WhisperX model is missing. Check the models folder beside Caps.')
+    s = s.replace("    '--native_dir', join(root, 'whisperx', 'canary'), '--alignment_dir', join(root, 'models', 'alignment'),\n    '--recovery_model', resolveModelSelection('large-v3-turbo'), '--output_dir', directory,", "    '--alignment_dir', join(root, 'models', 'alignment'), '--output_dir', directory,")
+    start = s.index('      const model = isCanarySelection')
+    end = s.index('      await validateModelSelection(selection);', start)
+    s = s[:start] + s[end:]
+    s = s.replace("{ path: request.inputPath, model, fileIndex, exportTranscript: options.smartMode === true || options.calibrate === true }", "{ path: request.inputPath, model: selection, fileIndex }")
+    start = s.index('    async alignOne(')
+    end = s.index('    async release()', start)
+    s = s[:start] + s[end:]
+    s = s[:s.index('export async function createQueueTranscriber')]+'''export async function createQueueTranscriber(options = {}) {
+  const workers = new Map();
+  return {
+    async transcribe(request, fileIndex) {
+      const runtimeOptions = { ...options, ...Object.fromEntries(
+        ['whisperxPath', 'device', 'deviceIndex', 'computeType'].map((key) => [key, request[key] ?? options[key]])
+      ) };
+      const key = JSON.stringify([runtimeOptions.whisperxPath, runtimeOptions.device, runtimeOptions.deviceIndex, runtimeOptions.computeType]);
+      for (const [otherKey, worker] of workers) if (key !== otherKey) await worker.release();
+      if (!workers.has(key)) workers.set(key, await (options.createWorker ?? createWorker)(runtimeOptions));
+      return workers.get(key).transcribe(request, fileIndex);
+    },
+    async align() {
+      if (options.signal?.aborted) throw cancelledError(options.signal.reason);
+      for (const worker of workers.values()) await worker.release();
+      const aligned = [];
+      for (const worker of workers.values()) aligned.push(...await worker.align());
+      return aligned;
+    },
+    async close() { await Promise.all([...workers.values()].map((worker) => worker.close())); }
+  };
+}
+'''
+    return s
+edit('src/queue-transcriber.js', queue)
+
+def worker(s):
+    s = s.replace('release ASR, recover, then align.', 'release ASR, then align with WhisperX.')
+    s = s.replace('        self.helpers = {\'__name__\': \'caps_canary_helpers\'}\n        exec(CANARY_SOURCE, self.helpers)', '')
+    start = s.index("        if selection.endswith('.gguf'):")
+    end = s.index('        self.selection = selection', start)
+    s = s[:start] + '''        import whisperx
+        self.model = whisperx.load_model(selection, 'cuda' if self.cuda else 'cpu',
+            device_index=self.args.device_index, language='en', compute_type=(
+                'float16' if self.cuda else 'int8') if self.args.compute_type == 'default' else self.args.compute_type,
+            local_files_only=True)
+''' + s[end:]
+    s = s.replace("        emit = self.helpers['progress']", '        emit = progress')
+    start = s.index('        if self.session is not None:', s.index('    def transcribe'))
+    end = s.index('        self.transcripts.append', start)
+    s = s[:start] + '''        # Keep memory budgets predictable across both supported models.
+        result = self.model.transcribe(audio, batch_size=1,
+            progress_callback=lambda fraction: emit(index, 'transcribing', fraction * .7))
+        segments = result['segments']
+''' + s[end:]
+    start = s.index('        payload = {}')
+    end = s.index('    def align(self, command):', start)
+    s = s[:start] + '        reply(command)\n\n' + s[end:]
+    start = s.index('        needs_recovery = ')
+    end = s.index('        aligned = []', start)
+    s = s[:start] + s[end:]
+    s = s.replace("self.helpers['write_words']", 'write_words')
+    s = s.replace("    parser.add_argument('--native_dir', required=True)\n", '').replace("    parser.add_argument('--recovery_model', required=True)\n", '')
+    start = s.index("            elif command['action'] == 'align-one':")
+    end = s.index("            elif command['action'] == 'align':", start)
+    s = s[:start] + s[end:]
+    # Keep word-level SRT output and progress independent of any removed engine.
+    helpers = '''
+def progress(index, phase, percent):
+    print('[CapsProgress] ' + json.dumps({'fileIndex': index, 'phase': phase, 'percent': percent}), flush=True)
+
+
+def write_words(result, destination):
+    def stamp(seconds):
+        millis = max(0, round(seconds * 1000))
+        hours, millis = divmod(millis, 3600000)
+        minutes, millis = divmod(millis, 60000)
+        seconds, millis = divmod(millis, 1000)
+        return f'{hours:02}:{minutes:02}:{seconds:02},{millis:03}'
+    rows = []
+    for word in result.get('word_segments', []):
+        text = word.get('word', '').strip()
+        if text and word.get('start') is not None and word.get('end') is not None:
+            start, end = word['start'], word['end']
+            if end <= start:
+                end = start + .001
+            rows.append(f'{len(rows)+1}\\n{stamp(start)} --> {stamp(end)}\\n{text}\\n')
+    destination.write_text('\\n'.join(rows), encoding='utf-8')
+
+'''
+    return s.replace('\nclass QueueWorker:', helpers + '\nclass QueueWorker:')
+edit('src/transcription-worker.py', worker)
+
+def app(s):
+    s = s.replace('DEFAULT_MODEL, CANARY_MODEL, isSupportedModel, modelLabel', 'DEFAULT_MODEL, AVAILABLE_MODELS, isSupportedModel, modelLabel, modelCompatibility')
+    s = s.replace('smartMode: false, ', '').replace("let lastWhisperModel = 'large-v3-turbo';\n", '')
+    s = s.replace('smartMode: config.smartMode, ', '')
+    s = re.sub(r"  \$\('#smart-status'\)\.textContent = .*?;\n", '', s)
+    s = s.replace("  $('#setting-smart-mode').checked = settings.smartMode === true;\n", '')
+    s = s.replace("  $('#setting-engine').value = settings.model === CANARY_MODEL ? 'canary' : 'whisperx';\n", '')
+    s = s.replace("smartMode: $('#setting-smart-mode').checked, ", '')
+    s = re.sub(r"\$\('#setting-engine'\)\.addEventListener\('change', \(\) => \{.*?\n}\);\n", '', s, flags=re.S)
+    s = re.sub(r"  if \(event.smart\) \{.*?return; }\n", '', s)
+    start = s.index('function updateEngineLabel()')
+    end = s.index("\n$('#select-input')", start)
+    s = s[:start] + '''function updateEngineLabel() { $('#brand-engine').textContent = 'WhisperX'; }
+
+function compatibility(id) {
+  return modelCompatibility(id, environmentDiagnostics, {
+    device: $('#setting-device').value, deviceIndex: Number($('#setting-device-index').value || 0)
+  });
+}
+
+function updateModelControls() {
+  const selected = $('#setting-model').value;
+  const models = environmentDiagnostics.models;
+  for (const spec of AVAILABLE_MODELS) {
+    const radio = document.querySelector(`input[name="transcription-model"][value="${spec.id}"]`);
+    const status = compatibility(spec.id);
+    const installed = models?.find(({ id }) => id === spec.id)?.installed;
+    radio.checked = spec.id === selected;
+    radio.disabled = !status.supported || status.pending === true;
+    radio.closest('.model-choice').dataset.disabled = String(radio.disabled);
+    const note = radio.closest('.model-choice').querySelector('.model-choice-status');
+    note.textContent = status.pending ? 'Checking hardware' : !status.supported ? 'Unavailable on this device' : installed === false ? 'Not installed' : installed ? 'Installed' : 'Checking installation';
+    const tip = document.getElementById(`requirements-${spec.id}`);
+    tip.textContent = `Estimated Caps requirements. NVIDIA CUDA: ${spec.gpuVramGiB} GB VRAM + ${spec.gpuRamGiB} GB RAM. CPU: ${spec.cpuRamGiB} GB RAM (int8). Batch size 1, including word alignment. Long recordings and other apps can need more memory. ${status.reason}`;
+  }
+  const status = compatibility(selected);
+  const model = models?.find(({ id }) => id === selected);
+  $('#model-status').textContent = status.pending ? 'Checking' : !status.supported ? 'Unavailable' : model?.installed ? 'Ready' : 'Not installed';
+  $('#model-status').dataset.state = status.supported && model?.installed ? 'installed' : 'missing';
+  $('#model-help').textContent = !status.supported || status.pending ? status.reason : model?.installed
+    ? `${status.reason} ${formatStorageSize(model.sizeBytes)} on disk.`
+    : `Install ${modelLabel(selected)} in models/${selected}/ beside Caps.`;
+  $('#diag-model').textContent = model?.installed ? `${modelLabel(selected)} · ${model.path}` : `${modelLabel(selected)} · Not installed`;
+  const ram = environmentDiagnostics.memory?.totalBytes;
+  $('#hardware-summary').textContent = ram ? `${formatStorageSize(ram)} RAM · ${cudaDevices().length ? cudaDevices().map(gpu => `${gpu.name} (${formatStorageSize(gpu.totalMemoryBytes)} VRAM)`).join(', ') : 'CPU processing'}` : 'Detecting system memory and graphics.';
+  updateSaveButton();
+}
+''' + s[end:]
+    s = s.replace("  $('#save-settings').disabled = settingsSaving || ($('#setting-device').value === 'cuda' && !selectedCudaDevice());", "  const status = compatibility($('#setting-model').value);\n  $('#save-settings').disabled = settingsSaving || !status.supported || status.pending === true || ($('#setting-device').value === 'cuda' && !selectedCudaDevice());")
+    s = s.replace("  $('#setting-cuda-option').disabled = false;", "  $('#setting-cuda-option').disabled = !devices.length || !cudaRuntimeAvailable;")
+    s = s.replace("  updateSaveButton();\n}\n\nfunction applySettingsToForm", "  updateModelControls();\n}\n\nfunction applySettingsToForm")
+    s = s.replace("$('#setting-device-index').addEventListener('change', updateSaveButton);", "$('#setting-device-index').addEventListener('change', updateModelControls);\nfor (const radio of document.querySelectorAll('input[name=\"transcription-model\"]')) radio.addEventListener('change', () => { $('#setting-model').value = radio.value; updateModelControls(); });")
+    return s
+edit('src/desktop/renderer/app.js', app)
+edit('src/main.js', lambda s: s.replace('--model canary-qwen-2.5b', '--model small').replace('Canary Qwen 2.5B', 'Small'))
+
+def download(s):
+    s = s.replace('import hashlib\n', '')
+    s = s.replace("    'canary-qwen-2.5b': 'handy-computer/canary-qwen-2.5b-gguf',", "    'small': 'Systran/faster-whisper-small',")
+    s = re.sub(r'# Keep the converted Canary.*?\n\n\n', '', s, flags=re.S)
+    start = s.index('    canary = ')
+    end = s.index('    snapshot_download(', start)
+    s = s[:start] + "    patterns = ['config.json', 'model.bin', 'tokenizer.json', 'vocabulary.json',\n                'vocabulary.txt', 'preprocessor_config.json', 'README.md', 'LICENSE*']\n" + s[end:]
+    s = s.replace('        revision=CANARY_REVISION if canary else None,\n', '')
+    s = s.replace("required = ['canary-qwen-2.5b-Q8_0.gguf'] if canary else", 'required =')
+    s = s.replace('if not canary and not any', 'if not any')
+    s = re.sub(r'    if canary:\n.*?    print', '    print', s, flags=re.S)
+    return s
+edit('scripts/download-model.py', download)

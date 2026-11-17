@@ -1,0 +1,41 @@
+# CAPS Smart Mode — implementation and measured results
+
+Implemented in `C:\xampp\htdocs\caps`. Smart Mode defaults to off. Existing uncommitted changes were preserved. This delivery updates project source; the existing portable EXE was not rebuilt.
+
+The feature adds a bounded CPU alignment process, calibration-based end-to-end estimates, resource gates, hysteresis, per-file progress, a saved settings checkbox, cancellation, and automatic fallback. Whisper Large V3 Turbo continues recognition; the real English WhisperX/Wav2Vec2 aligner handles alignment. No recognition timestamps replace forced alignment. Exports retain the existing ordering and formatting.
+
+## Actual local measurements
+
+Measured 24 October 2026, Asia/Manila, using NVIDIA GeForce RTX 3050 (8 GiB), AMD Ryzen 5 5600GT (12 logical threads), and approximately 31.9 GiB RAM. The optional worker used three threads. Clips were derived locally from one existing 60-second narration; the longer clips repeat that narration. This is a narrow corpus, not a general accuracy study. All media stayed local.
+
+| Workload | Normal total | Smart total | CPU overlap jobs | Final exports byte-identical |
+|---|---:|---:|---:|---|
+| Single file (30 s) | 30.87 s | 30.14 s | 0 | Yes |
+| Three short files (15 s each) | 34.24 s | 34.37 s | 0 | Yes |
+| Six mixed files (15–60 s) | 56.59 s | 47.75 s | 0 | Yes |
+| Three longer files (~180 s each) | 75.03 s | 75.53 s | 0 | Yes |
+
+Times include worker/model initialization, recognition, alignment, caption validation, and final SRT publication. Each case has one Normal run followed by one Smart run; cache, thermal, and background-load effects were not controlled. These are observations, not statistically established performance gains. Calibration was separate and took **84.40 seconds**.
+
+Measured alignment rates: GPU **0.0247 seconds per audio second**; CPU **0.1616 seconds per audio second**, excluding CPU initialization. CPU process/model initialization and teardown overhead was approximately **50.48 seconds**. CPU/GPU calibration used the same six transcripts; words and timestamps matched within 20 ms for all six files. All final paired exports were byte-identical.
+
+**No real CPU/GPU overlap was enabled on this hardware.** The scheduler predicted that CPU assistance would be counterproductive, then detected transcription throughput drift. The short batch ran 0.13 seconds slower; the benchmark invalidated the local profile. The longer run used fallback with that invalid profile. Differences between fallback wall times must not be described as CPU acceleration. Final source additionally avoids transcript serialization and duration probes when calibration is missing or invalid.
+
+The JSON reports retain individual transcription timings, GPU alignment inference timings, CPU calibration rates, profile configuration, decisions, and sampled free RAM. RAM sampling describes whole-system headroom, not isolated worker RSS. CPU-load pressure and failure behavior were tested with controlled test inputs. The later source adds opportunistic GPU utilization reporting; earlier measurement JSON does not contain that field. No GPU utilization or process-memory peak is invented here.
+
+## Verification
+
+- Integrated project: **141 passed, 0 failed, 1 skipped** (142 total). The skipped test is the existing external WhisperX regression fixture test.
+- Eight new tests cover the scheduler, resource constraints, throughput deterioration, successful asynchronous overlap, exactly-once merging, worker failure, and cancellation.
+- The Electron UI harness completed at desktop, narrow, and landscape sizes. It checked the new control's label, description, keyboard focus, and enabled state. See `smart-mode-settings.png`.
+- Existing Normal Mode tests passed, including live additions/reordering, duplicate stems, Unicode paths, Canary recovery, cancellation, and output compatibility.
+
+## Remaining validation
+
+A real hardware speedup from overlapping CPU alignment is **not demonstrated**. Deliberately saturated CPU and constrained-memory hardware runs were not performed; those conditions have deterministic automated coverage. Very long production recordings, other GPUs/CPUs, Canary concurrent alignment, and broader speech accuracy remain unvalidated. Single-file work intentionally uses the existing path. Alignment results are exported in original queue order after the batch alignment barrier.
+
+Use the calibration/benchmark command documented in `docs/smart-mode.md` before enabling CPU assistance on another workload. A new installation without a valid local profile falls back automatically. Calibration is explicit; its potentially significant startup cost is never hidden in a normal job. No local performance profile has been installed into the source project.
+
+## Deliverables
+
+`smart-mode-source.zip` contains the changed source, tests, benchmark command, technical documentation, and this report. `smart-mode.patch` is relative to the existing working files at task start, including pre-existing uncommitted changes; it is not a patch against repository HEAD. The changes are already integrated into CAPS. Original edited files were backed up in this task's workspace. `test-results.txt` records the integrated regression run; `benchmark-*/benchmark.json` records actual measurements.

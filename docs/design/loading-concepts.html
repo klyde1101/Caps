@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CAPS — Loading screen concepts</title>
+  <style>
+    :root { color-scheme: dark; font-family: "Segoe UI", system-ui, sans-serif; color: #fafaff; background: #0f1115; --accent: #a78bfa; --muted: #acafbd; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 48px; }
+    header, .concepts, footer { max-width: 1180px; margin-inline: auto; }
+    .eyebrow { font-size: 11px; font-weight: 650; letter-spacing: .18em; color: var(--accent); }
+    h1 { font-size: 32px; font-weight: 600; letter-spacing: -.04em; margin: 12px 0; }
+    header > p:last-child, footer { color: var(--muted); font-size: 14px; line-height: 1.7; }
+    .concepts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; margin-top: 36px; }
+    article { min-width: 0; }
+    .screen { height: 220px; border: 1px solid #30303c; border-radius: 22px; background: #17191f; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; overflow: hidden; }
+    .screen p { margin: 9px 0 0; font-size: 12px; color: #bdbece; }
+    .name { font-size: 23px; font-weight: 650; letter-spacing: -.04em; margin-top: 14px; }
+    .logo { width: 44px; height: 44px; border-radius: 13px; }
+    .orbit { background: radial-gradient(ellipse at 50% 0, #7549d92a, transparent 70%), #17191f; }
+    .orbit .mark { width: 66px; height: 66px; display: grid; place-items: center; position: relative; }
+    .orbit .mark::before { content: ''; position: absolute; inset: 0; border: 2px solid #a78bfa24; border-top-color: #a78bfa; border-right-color: #a78bfa66; border-radius: 50%; animation: spin 2s linear infinite; }
+    .wave { display: flex; gap: 5px; align-items: center; height: 44px; }
+    .wave i { width: 4px; height: 18px; background: #a78bfa; border-radius: 4px; animation: wave 1.3s ease-in-out infinite alternate; }
+    .wave i:nth-child(2n) { height: 30px; animation-delay: -.5s; }
+    .wave i:nth-child(3n) { height: 42px; animation-delay: -.9s; }
+    .wave i:nth-child(4n) { height: 24px; animation-delay: -.3s; }
+    .wave-screen .name { margin-top: 17px; }
+    .mini-label { position: absolute; bottom: 20px; font-size: 9px; letter-spacing: .14em; color: #b7a7df; }
+    .caption-screen { background: radial-gradient(ellipse at 100% 100%, #7549d922, transparent 70%), #17191f; }
+    .caption-brand { display: flex; gap: 9px; align-items: center; position: absolute; left: 24px; top: 21px; font-size: 15px; font-weight: 650; }
+    .caption-brand .logo { width: 24px; height: 24px; border-radius: 7px; }
+    .caption { display: flex; gap: 5px; font-size: 25px; font-weight: 600; letter-spacing: -.04em; margin-top: 12px; }
+    .caption span { padding: 3px 7px; border-radius: 5px; }
+    .caption .highlight { background: #7549d9; animation: highlight 3s ease-in-out infinite; }
+    .caption-screen p { margin-top: 16px; }
+    .rail { height: 3px; width: 130px; background: #34303f; border-radius: 3px; margin-top: 19px; overflow: hidden; }
+    .rail::after { content: ''; display: block; width: 35%; height: 100%; background: #a78bfa; animation: slide 1.8s ease-in-out infinite; }
+    h2 { font-size: 17px; font-weight: 600; margin: 20px 0 8px; letter-spacing: -.02em; }
+    .number { color: #b7a7df; font-size: 12px; margin-right: 9px; }
+    article > p { color: var(--muted); font-size: 13px; line-height: 1.7; margin: 0; }
+    .recommend { display: inline-block; font-size: 10px; letter-spacing: .05em; color: #c8b8f0; border: 1px solid #524166; border-radius: 5px; padding: 3px 6px; margin-bottom: 10px; }
+    footer { border-top: 1px solid #2a2d35; margin-top: 38px; padding-top: 20px; font-size: 12px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes wave { to { transform: scaleY(.35); opacity: .45; } }
+    @keyframes highlight { 50% { background: #9470df; } }
+    @keyframes slide { from { transform: translateX(-110%); } to { transform: translateX(390%); } }
+    @media (max-width: 850px) { body { padding: 24px; } .concepts { grid-template-columns: 1fr; max-width: 420px; } }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; } }
+  </style>
+</head>
+<body>
+  <header><p class="eyebrow">CAPS / VISUAL EXPLORATION</p><h1>A quieter start. A clearer signal.</h1><p>Three loading-screen directions, designed for CAPS’ compact 360 × 220 launch window.</p></header>
+  <main class="concepts">
+    <article>
+      <div class="screen orbit" role="img" aria-label="Concept one: CAPS logo with a soft rotating violet ring">
+        <div class="mark"><img class="logo" src="../../build/caps-icon.png" alt=""></div><div class="name">Caps</div><p>Preparing your workspace…</p>
+      </div>
+      <h2><span class="number">01</span>Quiet orbit</h2><p>A refined version of the current splash. A slow ring, soft violet glow, and familiar app mark keep startup calm.</p>
+    </article>
+    <article>
+      <div class="screen wave-screen" role="img" aria-label="Concept two: animated violet audio waveform above the CAPS name">
+        <div class="wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="name">Caps</div><p>Getting things ready…</p><span class="mini-label">YOUR AUDIO. YOUR WORKSPACE.</span>
+      </div>
+      <h2><span class="number">02</span>Audio pulse</h2><p>A gently moving waveform connects the launch experience to audio transcription. More expressive, with very little visual clutter.</p>
+    </article>
+    <article>
+      <div class="screen caption-screen" role="img" aria-label="Concept three: CAPS wordmark and the phrase Every word counts with word highlighted">
+        <div class="caption-brand"><img class="logo" src="../../build/caps-icon.png" alt="">Caps</div><div class="caption"><span>Every</span><span class="highlight">word</span><span>counts.</span></div><p>Preparing your caption workspace…</p><div class="rail" aria-hidden="true"></div>
+      </div>
+      <h2><span class="number">03</span>Caption first</h2><span class="recommend">RECOMMENDED</span><p>A highlighted caption introduces CAPS’ purpose immediately. The moving rail signals activity while the workspace opens.</p>
+    </article>
+  </main>
+  <footer>Design drafts only. Startup activity is indeterminate; none of these concepts implies a measured percentage. All motion stops when reduced motion is enabled.</footer>
+</body>
+</html>

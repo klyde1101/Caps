@@ -1,0 +1,51 @@
+/* Shared Caps palette. Legacy aliases keep the other workspaces compatible. */
+:root {
+  color-scheme: dark;
+  font-family: Inter, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  font-size: 14px;
+  --bg: #131316;
+  --surface: #1B1B1F;
+  --surface-sunken: #16161A;
+  --bar: #18181C;
+  --line: #2C2C32;
+  --line-strong: #3A3A42;
+  --text: #ECECEF;
+  --muted: #A0A0AA;
+  --accent: #9D8CFF;
+  --accent-tint: #1D1B2B;
+  --accent-line: #34314A;
+  --accent-text: #C9BFFF;
+  --on-accent: #15131F;
+  --success: #6FCF97;
+  --warning: #E8B64A;
+  --disabled-text: #8A8A94;
+  --segment-active: #2B2A3A;
+  --frame-bg: #0F0F12;
+  --sample-text: #FFFFFF;
+  --danger: #FFB4B4;
+  --scrim: rgb(0 0 0 / 60%);
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23A0A0AA' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
+  --radius-control: 10px;
+  --radius-card: 12px;
+  --radius-panel: 14px;
+  --surface-raised: var(--surface);
+  --surface-hover: var(--segment-active);
+  --subtle: var(--muted);
+  --inverse: var(--on-accent);
+  --accent-strong: var(--accent);
+  --accent-control: var(--accent);
+  --accent-muted: var(--accent-line);
+  --accent-soft: var(--accent-tint);
+  --focus: var(--accent);
+  --radius-sm: var(--radius-control);
+  --radius-md: var(--radius-card);
+  --radius-lg: var(--radius-panel);
+  color: var(--text);
+  background: var(--bg);
+}
+
+button:focus-visible, input:focus-visible, select:focus-visible,
+summary:focus-visible, a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

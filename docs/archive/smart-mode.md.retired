@@ -1,0 +1,39 @@
+# Smart Mode
+
+Smart Mode is optional and defaults to **off**. Its objective is shorter batch completion time, including alignment and export. CPU utilization alone never enables assistance.
+
+## Architecture assessment
+
+CAPS is an Electron application with plain JavaScript controllers and persistent Python workers. `JobController` drains the editable live queue; `generateCaptionBatchJob` handles static batches and single requests. Both use `createQueueTranscriber`. Recognition supports native Canary and WhisperX/faster-whisper, including Large V3 Turbo. Canary recovery also uses Turbo. Recognition models remain loaded across compatible files.
+
+Alignment is **WhisperX forced alignment**, not Whisper Large V3 Turbo. The installed English implementation uses torchaudio Wav2Vec2 `WAV2VEC2_ASR_BASE_960H`, with the same cached weights and alignment options on CPU and GPU. Normal Mode deliberately drains recognition, releases recognition models, recovers incomplete Canary segments, loads the aligner, aligns all files, and exports. This memory-saving boundary explains the wait after transcription.
+
+Smart Mode retains this worker and adds at most one separate CPU process. A completed transcript becomes eligible for CPU alignment while subsequent recognition continues. The CPU process caches one aligner, hides CUDA, uses at most a quarter of logical CPUs (maximum four), sets one PyTorch interop thread, bounds BLAS and FFmpeg decoder threads, and uses below-normal Windows process priority. Processes do not share model objects or write the same temporary SRT. The original worker keeps each transcript until CPU completion is acknowledged; CPU failure leaves it available for fallback.
+
+Stable file indices join results, including duplicate filenames and reordered queues. Exports still use the existing caption layout, validation, and atomic publishing code and occur in queue order after recognition and alignment finish. No recognition timestamps are substituted for forced alignment. SRT imports and Canary files requiring recovery retain the original path. Existing cancellation signals reach both process trees.
+
+## Scheduling and calibration
+
+Enable the checkbox in Settings. The status line explains whether CPU assistance is active, paused, or disabled. Per-file bars and separate transcription/alignment counts show concurrent progress. Mode changes apply to new queues; queues retain their captured settings.
+
+No profile means Normal Mode. To measure a local profile explicitly:
+
+```powershell
+node scripts/benchmark-smart-mode.mjs C:\Benchmarks\caps C:\Audio\a.wav C:\Audio\b.wav C:\Audio\c.wav
+```
+
+The command uses the installed Large V3 Turbo and CPU/GPU aligners. It runs Normal Mode through export, times CPU alignment of those exact transcripts, checks word/timing consistency within 20 ms, runs Smart Mode through export, and compares final SRT bytes. Calibration time is reported separately. This deliberately explicit step can take tens of seconds to initialize Python and the model. It is not hidden inside ordinary jobs. Reuse the profile for other measurements with `--reuse-calibration` (also accepts a single file).
+
+Profiles are local `data/smart-profile.json`, expire after seven days, and match model path, GPU name, CPU model, logical CPU count, and worker thread budget. A slower measured Smart run or changed final exports invalidates the profile. Recalibrate after hardware, model, runtime, or driver changes. Do not distribute profiles between installations.
+
+The scheduler requires at least three calibration samples, two current transcription observations, and ten seconds of observations. It estimates complete remaining time from measured transcription/CPU/GPU alignment rates, remaining file durations, CPU startup, outstanding alignment, and a 15% contention allowance. Assistance requires at least 5% predicted improvement. A five-second pause cooldown prevents rapid switching. A changed model or throughput drift disables assistance for that queue. Two consecutive overlapping recognition slowdowns above 15%, or CPU alignment above 125% of its calibrated rate, disable new CPU assignments. Running file operations finish safely.
+
+CPU load above 80%, fewer than four logical CPUs, less than 20% free RAM, less than 2 GiB free RAM, insufficient measured memory headroom, or GPU free memory below 512 MiB suspend assistance. GPU memory and opportunistic NVML utilization are collected when available; unavailable utilization is represented as null. Throughput is the primary signal. RAM checks use system free memory, not a hard process memory quota.
+
+Duration inspection reads FFmpeg headers, caches results, and bounds the scheduling window to 16 pending files. Unknown/out-of-range durations, larger windows, single-file work, unsupported devices, recovery, missing measurements, and initialization failures favor Normal Mode. The CPU worker accepts no backlog while busy; remaining transcripts stay in the original alignment queue. File-boundary decisions cannot guarantee a speedup against unpredictable external system load.
+
+## Validation and limitations
+
+Automated scheduler and queue tests cover favorable/unfavorable estimates, missing/stale profiles, single-file/no-overlap work, CPU/RAM/GPU memory pressure, hysteresis, throughput deterioration, actual asynchronous overlap, exactly-once results, worker failure, and cancellation. The existing regression suite continues to pass. The hidden Electron harness checks the toggle label, description, focus, and desktop/narrow layouts.
+
+See the accompanying benchmark report for actual measurements. The local RTX 3050 measurements favor GPU alignment: CPU inference and startup were too costly to enable overlap. A faster Smart fallback wall time is not evidence of CPU acceleration. Real hardware overlap, deliberately saturated CPU, constrained-RAM runs, and broad speech accuracy evaluation remain unvalidated. Pressure and failure cases have deterministic automated coverage, which is not a hardware benchmark. Keep Smart Mode opt-in.

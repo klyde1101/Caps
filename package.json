@@ -1,0 +1,55 @@
+{
+  "name": "caps",
+  "version": "1.0.0-beta.1",
+  "private": true,
+  "type": "module",
+  "description": "Premiere-ready captions from WhisperX aligned subtitle output",
+  "author": "klyde1101 (https://github.com/klyde1101)",
+  "main": "src/desktop/main.js",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "start": "node src/main.js",
+    "desktop": "electron .",
+    "package:win": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-win.ps1 -Folder",
+    "runtime:build": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-whisperx-runtimes.ps1"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "electron": "44.4.5",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.caps.desktop",
+    "productName": "Caps",
+    "asar": true,
+    "electronFuses": {
+      "runAsNode": false
+    },
+    "electronLanguages": [
+      "en-US"
+    ],
+    "files": [
+      "src/**/*",
+      "!src/main.js",
+      "build/caps-icon.png",
+      "build/caps-icon.ico",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": "portable",
+      "icon": "build/caps-icon.ico",
+      "artifactName": "Caps-${version}.${ext}",
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "portable": {
+      "requestExecutionLevel": "user",
+      "useZip": true,
+      "splashImage": "build/caps-launch-splash.bmp"
+    }
+  }
+}

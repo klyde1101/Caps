@@ -1,0 +1,7 @@
+{
+  "name": "caps-responsive-qa",
+  "version": "1.0.0",
+  "private": true,
+  "main": "main.cjs",
+  "productName": "Caps Responsive QA"
+}

@@ -73,8 +73,12 @@ try {
         }
     }
     if ($release.draft -and -not $KeepDraft) {
-        gh release edit $tag --repo $repo --notes-file docs/release-beta1.md --draft=false --prerelease
+        gh release edit $tag --repo $repo --tag $tag --target $head --notes-file docs/release-beta1.md --draft=false --prerelease
         if ($LASTEXITCODE -ne 0) { throw 'Assets uploaded. Publishing the draft failed; run this script again.' }
+        $release = gh api "repos/$repo/releases/$($release.id)" | ConvertFrom-Json
+        if ($LASTEXITCODE -ne 0 -or $release.draft -or $release.tag_name -ne $tag) {
+            throw 'Cannot confirm the published release tag.'
+        }
     }
     if ($release.draft -and $KeepDraft) { Write-Output "Draft assets verified: $($release.html_url)" }
     else { Write-Output "Published and verified: $($release.html_url)" }

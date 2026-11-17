@@ -37,8 +37,12 @@ try {
         gh release create $tag --repo $repo --target $head --title "Caps v$version" --notes-file docs/release-beta1.md --draft --prerelease
         if ($LASTEXITCODE -ne 0) { throw 'Cannot create release draft.' }
     }
-    $release = gh api "repos/$repo/releases/tags/$tag" | ConvertFrom-Json
+    # GitHub's lookup by tag excludes drafts. Find the draft's release ID first.
+    $allReleases = gh api "repos/$repo/releases?per_page=100" | ConvertFrom-Json
     if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect the release draft.' }
+    $release = @($allReleases | Where-Object tag_name -eq $tag)
+    if ($release.Count -ne 1) { throw 'Cannot uniquely locate the release.' }
+    $release = $release[0]
     if ($release.target_commitish -ne $head) { throw 'The existing release targets a different commit.' }
     foreach ($asset in $assets) {
         $file = Get-Item -LiteralPath $asset
@@ -53,7 +57,7 @@ try {
         gh release upload $tag $asset --repo $repo --clobber
         if ($LASTEXITCODE -ne 0) { throw 'Asset upload stopped. Run this script again to resume the draft.' }
     }
-    $release = gh api "repos/$repo/releases/tags/$tag" | ConvertFrom-Json
+    $release = gh api "repos/$repo/releases/$($release.id)" | ConvertFrom-Json
     if ($LASTEXITCODE -ne 0) { throw 'Cannot verify uploaded release assets.' }
     foreach ($asset in $assets) {
         $file = Get-Item -LiteralPath $asset

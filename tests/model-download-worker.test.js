@@ -56,7 +56,7 @@ with tempfile.TemporaryDirectory() as directory:
   pass
 print('speech-resources-ok')
 `;
-  const result = await run(python, ['-c', code, worker], { windowsHide: true, timeout: 10000 });
+  const result = await run(python, ['-B', '-c', code, worker], { windowsHide: true, timeout: 10000 });
   assert.match(result.stdout, /speech-resources-ok/);
 });
 

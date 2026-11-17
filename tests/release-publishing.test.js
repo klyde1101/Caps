@@ -26,7 +26,7 @@ $lines = foreach ($name in @('Portable.zip', 'Setup.exe')) {
     (Get-FileHash -LiteralPath (Join-Path $directory $name)).Hash.ToLowerInvariant() + '  ' + $name
 }
 [IO.File]::WriteAllLines((Join-Path $directory 'SHA256SUMS.txt'), [string[]]$lines)
-$global:state = @{ draft = $true; target_commitish = ('a' * 40); html_url = 'https://example.test/release'; assets = @() }
+$global:state = @{ id = 123; tag_name = 'v1.0.0-beta.1'; draft = $true; target_commitish = ('a' * 40); html_url = 'https://example.test/release'; assets = @() }
 $global:uploads = @()
 $global:failSetup = $true
 function global:git {
@@ -35,7 +35,12 @@ function global:git {
 }
 function global:gh {
     $global:LASTEXITCODE = 0
-    if ($args[0] -eq 'api') { $global:state | ConvertTo-Json -Depth 8; return }
+    if ($args[0] -eq 'api') {
+        if ($args[1] -match '/tags/') { throw 'Drafts cannot be looked up by tag.' }
+        if ($args[1] -match '\?per_page=') { ConvertTo-Json -InputObject @($global:state) -Depth 8 }
+        else { $global:state | ConvertTo-Json -Depth 8 }
+        return
+    }
     switch ($args[1]) {
         'list' { ConvertTo-Json -InputObject @(@{ tagName = 'v1.0.0-beta.1'; isDraft = $global:state.draft }); return }
         'upload' {

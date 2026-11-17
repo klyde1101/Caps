@@ -7,6 +7,7 @@ import { basename, dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { whisperxCandidates } from '../whisperx-runner.js';
 
+const speechResources = readFileSync(new URL('../speech-resources.json', import.meta.url), 'utf8');
 const WORKER = readFileSync(new URL('../model-download-worker.py', import.meta.url), 'utf8');
 const repositories = JSON.parse(readFileSync(new URL('../model-repositories.json', import.meta.url), 'utf8'));
 const RUNTIME_FILES = /^(config\.json|model\.bin|tokenizer\.json|vocabulary\.(json|txt)|preprocessor_config\.json|README\.md|LICENSE[^/\\\0]*)$/;
@@ -195,7 +196,7 @@ export class ModelDownloadManager {
     let timer;
     try {
       aborted(signal);
-      const env = { ...process.env, HF_HUB_DISABLE_IMPLICIT_TOKEN: '1', HF_HUB_DISABLE_PROGRESS_BARS: '1',
+      const env = { ...process.env, CAPS_RESOURCES_ROOT: this.root, CAPS_SPEECH_RESOURCES: speechResources, HF_HUB_DISABLE_IMPLICIT_TOKEN: '1', HF_HUB_DISABLE_PROGRESS_BARS: '1',
         HF_HUB_DISABLE_TELEMETRY: '1', HF_HUB_DISABLE_XET: '1', HF_ENDPOINT: 'https://huggingface.co', PYTHONUTF8: '1' };
       for (const key of ['HF_TOKEN', 'HUGGING_FACE_HUB_TOKEN', 'HUGGINGFACE_HUB_TOKEN', 'HF_TOKEN_PATH', 'HF_HUB_OFFLINE']) delete env[key];
       const child = this.spawnImpl(python, ['-u', '-c', WORKER, String(process.pid), manifest.repoId,

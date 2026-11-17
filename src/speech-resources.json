@@ -1,0 +1,14 @@
+{
+  "url": "https://github.com/klyde1101/Caps/releases/download/v1.0.0-beta.1/Caps-1.0.0-beta.1-Speech-Resources.zip",
+  "files": {
+    "models/alignment/wav2vec2_fairseq_base_ls960_asr_ls960.pth": "488fd4f16de84438ffc945334278c1b9fb9b7159a806c1080b16111a958c945d",
+    "models/nltk/tokenizers/punkt_tab/english/abbrev_types.txt": "92a3e070f43d9b4c5534758ca40ad7343b04e7e29bfe0c2eb658a39445a4f779",
+    "models/nltk/tokenizers/punkt_tab/english/collocations.tab": "8e2da1225e4dd2cc9dba261ee231ccb134859e21b46006e7f472c5ee269af0cf",
+    "models/nltk/tokenizers/punkt_tab/english/ortho_context.tab": "4bbcca25ed3d3f06c02402abf8419b9f033b8adc06e7b482eca4e45f81a5dc4c",
+    "models/nltk/tokenizers/punkt_tab/english/sent_starters.txt": "f3f8535483e1dba487241b764945168123bca3209a9645e59acd1225dc76edac",
+    "whisperx/cpu/python/Lib/site-packages/whisperx/assets/pytorch_model.bin": "f68e434e634587d9385d3b25291009d68edf5e682dc65975d49b3ee0d7ff9d14",
+    "whisperx/cpu/python/Lib/site-packages/faster_whisper/assets/silero_vad_v6.onnx": "4cbf549b8326f60f80f2536d9eefeb450a9abe83365a098031c89719f1be17d2",
+    "whisperx/cuda/python/Lib/site-packages/whisperx/assets/pytorch_model.bin": "4428c46e2a7a7a42cbbfdcaa1ef3f5a5bb2bcd7f3008c24ac0587c7af65b099e",
+    "whisperx/cuda/python/Lib/site-packages/faster_whisper/assets/silero_vad_v6.onnx": "4cbf549b8326f60f80f2536d9eefeb450a9abe83365a098031c89719f1be17d2"
+  }
+}

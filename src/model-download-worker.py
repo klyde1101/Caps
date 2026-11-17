@@ -1,4 +1,10 @@
 """Hidden, public Hub downloads. Arguments are supplied by Caps, never a shell."""
+import hashlib
+import tempfile
+import urllib.request
+import zipfile
+from pathlib import Path
+
 import ctypes
 import json
 import os
@@ -47,12 +53,49 @@ def watch_parent(pid):
         time.sleep(.5)
 
 
+def ensure_speech_resources(root, manifest, staging):
+    missing = {}
+    for name, expected in manifest['files'].items():
+        target = (root / name).resolve()
+        if not target.is_relative_to(root):
+            raise ValueError('Invalid resource path')
+        if target.is_file():
+            with target.open('rb') as stream:
+                if hashlib.file_digest(stream, 'sha256').hexdigest() == expected:
+                    continue
+        missing[name] = target
+    if not missing:
+        return
+    # Any interrupted download stays in the model staging area, never at a live path.
+    with tempfile.TemporaryFile(dir=staging) as payload:
+        with urllib.request.urlopen(manifest['url'], timeout=90) as response:
+            import shutil
+            shutil.copyfileobj(response, payload)
+        with zipfile.ZipFile(payload) as archive:
+            for name, target in missing.items():
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with tempfile.NamedTemporaryFile(dir=target.parent, delete=False) as output:
+                    temporary = Path(output.name)
+                try:
+                    with archive.open(name) as source, temporary.open('wb') as output:
+                        shutil.copyfileobj(source, output)
+                    with temporary.open('rb') as stream:
+                        if hashlib.file_digest(stream, 'sha256').hexdigest() != manifest['files'][name]:
+                            raise ValueError('Downloaded speech resource failed verification: ' + name)
+                    os.replace(temporary, target)
+                finally:
+                    temporary.unlink(missing_ok=True)
+
+
 def main():
     parent, repo, revision, destination, files = sys.argv[1:]
     threading.Thread(target=watch_parent, args=(int(parent),), daemon=True).start()
     sys.stdout = RedactedStream(sys.stdout)
     sys.stderr = RedactedStream(sys.stderr)
     from huggingface_hub import snapshot_download
+    if 'CAPS_SPEECH_RESOURCES' in os.environ:
+        ensure_speech_resources(Path(os.environ['CAPS_RESOURCES_ROOT']).resolve(),
+                                json.loads(os.environ['CAPS_SPEECH_RESOURCES']), destination)
     # An anonymous, pinned public snapshot. No saved or inherited access token is used.
     snapshot_download(repo_id=repo, revision=revision, local_dir=destination,
                       allow_patterns=json.loads(files), token=False, max_workers=2)

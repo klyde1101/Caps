@@ -14,6 +14,52 @@ const worker = fileURLToPath(new URL('../src/model-download-worker.py', import.m
 const run = promisify(execFile);
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+test('speech resources verify downloads, preserve good files, and reject unsafe paths', { skip: !existsSync(python) }, async () => {
+  const code = String.raw`import hashlib, importlib.util, io, pathlib, sys, tempfile, zipfile
+from unittest.mock import patch
+spec = importlib.util.spec_from_file_location('worker', sys.argv[1])
+worker = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(worker)
+with tempfile.TemporaryDirectory() as directory:
+ root = pathlib.Path(directory).resolve()
+ staging = root / 'staging'
+ staging.mkdir()
+ name = 'models/alignment/test.pth'
+ data = b'verified speech resource'
+ manifest = {'url': 'https://example.test/resources.zip', 'files': {name: hashlib.sha256(data).hexdigest()}}
+ def archive(content):
+  payload = io.BytesIO()
+  with zipfile.ZipFile(payload, 'w') as output:
+   output.writestr(name, content)
+  payload.seek(0)
+  return payload
+ with patch.object(worker.urllib.request, 'urlopen', return_value=archive(data)):
+  worker.ensure_speech_resources(root, manifest, staging)
+ target = root / name
+ assert target.read_bytes() == data
+ with patch.object(worker.urllib.request, 'urlopen', side_effect=AssertionError('Already verified files must work offline')):
+  worker.ensure_speech_resources(root, manifest, staging)
+ target.write_bytes(b'existing incomplete file')
+ with patch.object(worker.urllib.request, 'urlopen', return_value=archive(b'corrupt download')):
+  try:
+   worker.ensure_speech_resources(root, manifest, staging)
+   raise AssertionError('Corrupt resource accepted')
+  except ValueError:
+   pass
+ assert target.read_bytes() == b'existing incomplete file'
+ assert list(target.parent.iterdir()) == [target]
+ manifest['files'] = {'../outside.pth': 'bad'}
+ try:
+  worker.ensure_speech_resources(root, manifest, staging)
+  raise AssertionError('Unsafe resource path accepted')
+ except ValueError:
+  pass
+print('speech-resources-ok')
+`;
+  const result = await run(python, ['-c', code, worker], { windowsHide: true, timeout: 10000 });
+  assert.match(result.stdout, /speech-resources-ok/);
+});
+
 test('bundled Python worker uses anonymous snapshot_download and redacts its log streams', { skip: !existsSync(python) }, async () => {
   const code = `import sys, types
 module = types.ModuleType('huggingface_hub')

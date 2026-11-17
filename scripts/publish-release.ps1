@@ -38,9 +38,14 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'Cannot create release draft.' }
     }
     # GitHub's lookup by tag excludes drafts. Find the draft's release ID first.
-    $allReleases = gh api "repos/$repo/releases?per_page=100" | ConvertFrom-Json
-    if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect the release draft.' }
-    $release = @($allReleases | Where-Object tag_name -eq $tag)
+    $release = @()
+    for ($attempt = 0; $attempt -lt 4; $attempt++) {
+        $allReleases = gh api "repos/$repo/releases?per_page=100" | ConvertFrom-Json
+        if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect the release draft.' }
+        $release = @($allReleases | Where-Object tag_name -eq $tag)
+        if ($release.Count) { break }
+        if ($attempt -lt 3) { Start-Sleep -Seconds 2 }
+    }
     if ($release.Count -ne 1) { throw 'Cannot uniquely locate the release.' }
     $release = $release[0]
     if ($release.target_commitish -ne $head) { throw 'The existing release targets a different commit.' }

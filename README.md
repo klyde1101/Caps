@@ -38,7 +38,7 @@ Every successful EXE rebuild runs guarded project cleanup after package verifica
 
 ## Troubleshooting
 
-Startup stages and failures are recorded in data/startup.log and data/launch.log. The launcher waits up to 30 seconds for the application window readiness signal. A failure before main-entry can originate in native Electron initialization; preserve logs and crash dumps before changing the runtime. Startup remains unverified in the managed runner.
+Startup stages and failures are recorded in data/startup.log and data/launch.log. The launcher waits up to 30 seconds for the application window readiness signal. A failure before main-entry can originate in native Electron initialization; preserve logs and crash dumps before changing the runtime. The beta release has passed installer extraction, launcher/window startup, CPU/CUDA runtime import, and speech-resource integrity checks on the build machine.
 
 If a model cannot fit, choose a smaller model or CPU. If playback is unavailable, caption text can still be edited; use H.264/AAC MP4 for broad playback compatibility. Subtitle-only inputs do not require transcription models.
 

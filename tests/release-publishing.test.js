@@ -29,6 +29,7 @@ $lines = foreach ($name in @('Portable.zip', 'Setup.exe')) {
 $global:state = @{ id = 123; tag_name = 'v1.0.0-beta.1'; draft = $true; target_commitish = ('a' * 40); html_url = 'https://example.test/release'; assets = @() }
 $global:uploads = @()
 $global:failSetup = $true
+$global:listReads = 0
 function global:git {
     $global:LASTEXITCODE = 0
     if ($args[0] -eq 'rev-parse') { 'a' * 40 }
@@ -37,7 +38,11 @@ function global:gh {
     $global:LASTEXITCODE = 0
     if ($args[0] -eq 'api') {
         if ($args[1] -match '/tags/') { throw 'Drafts cannot be looked up by tag.' }
-        if ($args[1] -match '\?per_page=') { ConvertTo-Json -InputObject @($global:state) -Depth 8 }
+        if ($args[1] -match '\?per_page=') {
+            $global:listReads++
+            if ($global:listReads -eq 1) { '[]' }
+            else { ConvertTo-Json -InputObject @($global:state) -Depth 8 }
+        }
         else { $global:state | ConvertTo-Json -Depth 8 }
         return
     }
@@ -66,6 +71,8 @@ try { & $publisher | Out-Null } catch {
 if (-not $failed -or -not $global:state.draft) { throw 'Interrupted upload must leave a draft.' }
 if ($global:uploads.Count -ne 2) { throw 'Expected checksum and portable uploads before interruption.' }
 $global:failSetup = $false
+& $publisher -KeepDraft | Out-Null
+if (-not $global:state.draft -or $global:uploads.Count -ne 3) { throw 'KeepDraft must verify all uploads without publishing.' }
 & $publisher | Out-Null
 if ($global:state.draft -or $global:uploads.Count -ne 3) { throw 'Resume must upload only the missing installer and publish.' }
 & $publisher | Out-Null

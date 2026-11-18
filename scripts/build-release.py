@@ -81,6 +81,51 @@ def run(*args, **kwargs):
     return subprocess.run(args, check=True, cwd=ROOT, **kwargs)
 
 
+def build_installer(seven, files, names, archive=None, embedded=False, base_url=None):
+    archive_size = sum(p.stat().st_size for p in files)
+    with tempfile.TemporaryDirectory() as tmp:
+        work = Path(tmp)
+        manifest = work / "payload.json"
+        manifest.write_text(json.dumps({"baseUrl": base_url or f"https://github.com/klyde1101/Caps/releases/download/v{VERSION}",
+                            "embeddedSize": archive_size if embedded else 0,
+                            "files": [{"name": p.name, "sha256": digest(p), "size": p.stat().st_size} for p in files]}))
+        removal = work / "installed-files.txt"
+        removal.write_text("\n".join(str(p) for p in sorted(names, key=lambda p: len(p.parts), reverse=True)), encoding="utf-8")
+        installer = RELEASE / f"{PREFIX}-Setup-x64.exe"
+        staged_installer = work / installer.name
+        metadata = work / "version.cs"
+        publisher = json.loads((ROOT / "build/publisher.json").read_text(encoding="utf-8-sig"))
+        metadata.write_text("\n".join([
+            f'[assembly:System.Reflection.AssemblyInformationalVersion({json.dumps(VERSION)})]',
+            f'[assembly:System.Reflection.AssemblyFileVersion({json.dumps(VERSION.split("-")[0] + ".0")})]',
+            f'[assembly:System.Reflection.AssemblyCompany({json.dumps(publisher["name"])})]',
+            '[assembly:System.Reflection.AssemblyProduct("Caps")]',
+            '[assembly:System.Reflection.AssemblyTitle("Caps Setup")]',
+            '[assembly:System.Reflection.AssemblyDescription("Windows installer for Caps")]',
+            'internal static class InstallerIdentity {',
+            f' public const string Publisher = {json.dumps(publisher["name"])};',
+            f' public const string Url = {json.dumps(publisher["url"])};',
+            f' public const string Version = {json.dumps(VERSION)};',
+            '}',
+        ]), encoding="utf-8")
+        csc = Path(os.environ["WINDIR"]) / "Microsoft.NET/Framework64/v4.0.30319/csc.exe"
+        run(csc, "/nologo", "/target:winexe", "/platform:x64", "/optimize+", "/reference:System.Windows.Forms.dll",
+            "/reference:Microsoft.CSharp.dll", "/reference:System.Drawing.dll", "/reference:System.Web.Extensions.dll",
+            f"/win32icon:{ROOT / 'build/caps-icon.ico'}", f"/out:{staged_installer}",
+            f"/resource:{ROOT / 'build/caps-icon.png'},caps-icon.png",
+            f"/resource:{seven},7za.exe", f"/resource:{manifest},payload.json",
+            f"/resource:{removal},installed-files.txt", f"/resource:{ROOT / 'scripts/install-release-payload.ps1'},install-release-payload.ps1",
+            f"/resource:{ROOT / 'scripts/uninstall-release.ps1'},uninstall.ps1", metadata, ROOT / "scripts/release-installer.cs")
+        with staged_installer.open("ab") as output:
+            if embedded:
+                with archive.open("rb") as source:
+                    shutil.copyfileobj(source, output, 4 * 1024**2)
+            output.write(b"CAPS_PAYLOAD_V1!")
+            output.write((archive_size if embedded else 0).to_bytes(8, "little"))
+        os.replace(staged_installer, installer)
+    return installer
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--seven", required=True)
@@ -142,27 +187,7 @@ def main():
                         output.write(block)
                         remaining -= len(block)
                 files.append(part)
-    with tempfile.TemporaryDirectory() as tmp:
-        work = Path(tmp)
-        manifest = work / "payload.json"
-        manifest.write_text(json.dumps({"baseUrl": f"https://github.com/klyde1101/Caps/releases/download/v{VERSION}",
-                            "files": [{"name": p.name, "sha256": digest(p)} for p in files]}))
-        removal = work / "installed-files.txt"
-        removal.write_text("\n".join(str(p) for p in sorted(names, key=lambda p: len(p.parts), reverse=True)), encoding="utf-8")
-        installer = RELEASE / f"{PREFIX}-Setup-x64.exe"
-        metadata = work / "version.cs"
-        metadata.write_text(f'[assembly:System.Reflection.AssemblyInformationalVersion("{VERSION}")]')
-        csc = Path(os.environ["WINDIR"]) / "Microsoft.NET/Framework64/v4.0.30319/csc.exe"
-        run(csc, "/nologo", "/target:winexe", "/platform:x64", "/optimize+", "/reference:System.Windows.Forms.dll",
-            "/reference:Microsoft.CSharp.dll", f"/win32icon:{ROOT / 'build/caps-icon.ico'}", f"/out:{installer}",
-            f"/resource:{seven},7za.exe", f"/resource:{manifest},payload.json",
-            f"/resource:{removal},installed-files.txt", f"/resource:{ROOT / 'scripts/install-release-payload.ps1'},install-release-payload.ps1",
-            f"/resource:{ROOT / 'scripts/uninstall-release.ps1'},uninstall.ps1", metadata, ROOT / "scripts/release-installer.cs")
-        with installer.open("ab") as output:
-            if embedded:
-                with archive.open("rb") as source:
-                    shutil.copyfileobj(source, output, 4 * 1024**2)
-            output.write((archive_size if embedded else 0).to_bytes(8, "little"))
+    installer = build_installer(seven, files, names, archive, embedded)
     files += [installer, RELEASE / f"{PREFIX}-Speech-Resources.zip"]
     (RELEASE / "SHA256SUMS.txt").write_text("".join(f"{digest(p)}  {p.name}\n" for p in files))
     if split:

@@ -50,6 +50,8 @@ Renderer sandboxing and context isolation remain enabled, with validated IPC and
 
 Run unit/regression tests, verify packaged files, launch the EXE outside the managed runner, test real CPU/CUDA media transcription, cancel/retry a model download, and edit/save captions. Keep the current build; successful rebuilds replace the launcher without creating a rollback copy. Do not remove runtime data as temporary build output.
 
+Installer identity is configured in `build/publisher.json`. The installer displays Klyde Alexander V. Penus and sets that name in file properties and the Windows installed-app entry. This metadata is separate from Authenticode signing: the beta remains unsigned, so Windows security prompts still say “Unknown publisher.” See [Windows signing](docs/windows-signing.md). Preview the installer without installing with `Setup-x64.exe --preview welcome` (also `download`, `verify`, `extract`, `complete`, or `error`).
+
 ## Version history
 
 1.0.0-beta.1: WhisperX Turbo/Small, live queues, caption editor, fixed Settings layout, Automatic fallback and startup diagnostics.

@@ -93,7 +93,8 @@ def main():
     args = parser.parse_args()
     seven = Path(args.seven).resolve()
     RELEASE.mkdir(parents=True, exist_ok=True)
-    archive = RELEASE / f"{PREFIX}-Runtime-x64.zip"
+    # GitHub sorts assets by filename; keep support data after the Setup download.
+    archive = RELEASE / f"{PREFIX}-Support-Runtime-x64.zip"
     runtime = run("node", "--input-type=module", "-e",
                   "import {launcherRuntime} from './scripts/clean-project.mjs'; console.log(await launcherRuntime('Caps.exe',process.cwd()))",
                   capture_output=True, text=True).stdout.strip()

@@ -107,21 +107,23 @@ static class Setup {
         }
         public void Dispose(){if(handle!=IntPtr.Zero){CloseHandle(handle);handle=IntPtr.Zero;}}
     }
-    internal static void MergeInstalledFiles(string destination,IEnumerable<string> incoming) {
+    internal static void MergeInstalledFiles(string destination,IEnumerable<string> incoming, Action<int,int> progress = null) {
         string root=Path.GetFullPath(destination).TrimEnd(Path.DirectorySeparatorChar);
         string manifest=Path.Combine(root,"installed-files.txt");
         var names=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var sources=new List<string>(incoming);
         if(File.Exists(manifest))sources.AddRange(File.ReadAllLines(manifest));
         sources.Add("installed-files.txt");
+        var visited = new HashSet<string>(StringComparer.Ordinal);
+        int count = 0;
         foreach(string name in sources) {
+            count++;
+            if (progress != null && (count % 128 == 0 || count == sources.Count)) progress(count, sources.Count);
             if(string.IsNullOrWhiteSpace(name))continue;
             if(Path.IsPathRooted(name))throw new IOException("Invalid installed file path.");
             string path=Path.GetFullPath(Path.Combine(root,name));
             if(!path.StartsWith(root+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase))throw new IOException("Installed file path escapes Caps.");
-            for(string part=path;part!=null;part=Path.GetDirectoryName(part))
-                if((File.Exists(part)||Directory.Exists(part)) && (File.GetAttributes(part)&FileAttributes.ReparsePoint)!=0)
-                    throw new IOException("A linked installed path prevents safe registration.");
+            InstalledPathCheck.Validate(path, visited);
             string relative=path.Substring(root.Length+1);
             string first=relative.Split(Path.DirectorySeparatorChar)[0];
             if(first.Equals("data",StringComparison.OrdinalIgnoreCase)||first.Equals("models",StringComparison.OrdinalIgnoreCase))continue;
@@ -174,7 +176,8 @@ static class Setup {
             report(new InstallProgress {Stage="finish",Message="Adding Caps to your Start menu"});
             Export("uninstall.exe",Path.Combine(destination,"Uninstall-Caps.exe"));
             using(var reader=new StreamReader(Assembly.GetExecutingAssembly().GetManifestResourceStream("installed-files.txt")))
-                MergeInstalledFiles(destination,reader.ReadToEnd().Split(new[]{'\r','\n'},StringSplitOptions.RemoveEmptyEntries));
+                MergeInstalledFiles(destination,reader.ReadToEnd().Split(new[]{'\r','\n'},StringSplitOptions.RemoveEmptyEntries),
+                    (current,total)=>report(new InstallProgress {Stage="finish",Current=current,Total=total,Message="Registering installed files"}));
             Type type=Type.GetTypeFromProgID("WScript.Shell");
             dynamic shell=Activator.CreateInstance(type);
             dynamic link=shell.CreateShortcut(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs),"Caps.lnk"));
@@ -203,10 +206,11 @@ static class Setup {
         return 0;
     }
 }
-sealed class InstallerWindow:Form {
+sealed class InstallerWindow:SetupWindow {
+    readonly SetupLayout layout;
     readonly string preview;
-    readonly Label heading,description,note,stage,percent,detail;
-    readonly Label[] steps=new Label[3];
+    readonly Label heading,description,note,stage,percent,detail,part,rate;
+    readonly SetupSteps steps;
     readonly TextBox folder,errorDetails;
     readonly CapsProgress progress;
     readonly CapsButton primary,secondary;
@@ -214,70 +218,34 @@ sealed class InstallerWindow:Form {
     readonly Stopwatch clock=new Stopwatch();
     CancellationTokenSource cancellation;
     System.Windows.Forms.Timer previewTimer;
-    long previousBytes;double previousTime,speed;
+    readonly DownloadEstimate estimate=new DownloadEstimate();
     string currentStage="";bool busy,complete;
-    [DllImport("dwmapi.dll")]static extern int DwmSetWindowAttribute(IntPtr window,int attr,ref int value,int size);
-    internal InstallerWindow(string previewState) {
-        preview=previewState;Text=preview==null?"Caps Setup":"Caps Setup - Preview";
-        AutoScaleDimensions=new SizeF(96,96);AutoScaleMode=AutoScaleMode.Dpi;ClientSize=new Size(640,504);
-        BackColor=Skin.Ground;ForeColor=Skin.Text;Font=Skin.Font(14);FormBorderStyle=FormBorderStyle.FixedSingle;
-        MaximizeBox=false;StartPosition=FormStartPosition.CenterScreen;Icon=Icon.ExtractAssociatedIcon(Setup.Executable);
-        var logo=new PictureBox {Bounds=new Rectangle(32,24,38,38),SizeMode=PictureBoxSizeMode.Zoom,TabStop=false};
-        using(var stream=Assembly.GetExecutingAssembly().GetManifestResourceStream("caps-icon.png"))
-        using(var image=Image.FromStream(stream))logo.Image=new Bitmap(image);
-        Controls.Add(logo);
-        LabelAt(this,"Caps",82,20,240,30,24,Skin.Text,FontStyle.Bold);
-        LabelAt(this,"Windows setup",83,51,260,22,12,Skin.Muted);
-        var version=LabelAt(this,InstallerIdentity.Version,420,32,188,24,12,Skin.Muted);version.TextAlign=ContentAlignment.MiddleRight;
-        Controls.Add(new Panel {Bounds=new Rectangle(32,88,576,1),BackColor=Skin.Line});
-        heading=LabelAt(this,"Install Caps",32,112,576,40,26,Skin.Text,FontStyle.Bold);
-        description=LabelAt(this,"Create and edit captions locally.\nInstall the app and its CPU and NVIDIA runtimes.",32,162,576,48,14,Skin.Muted);
-        var card=new SurfacePanel {Bounds=new Rectangle(32,228,576,130)};Controls.Add(card);
-        stage=LabelAt(card,"Installation folder",16,14,440,24,13,Skin.Muted);
-        percent=LabelAt(card,"",464,14,96,24,14,Skin.Text,FontStyle.Bold);percent.TextAlign=ContentAlignment.MiddleRight;
-        folder=new TextBox {Bounds=new Rectangle(16,48,544,24),Text=Setup.InstallDirectory,BorderStyle=BorderStyle.None,
-            BackColor=Skin.Surface,ForeColor=Skin.Text,Font=Skin.Font(14),ReadOnly=true,AccessibleName="Installation folder",TabIndex=0};
-        card.Controls.Add(folder);
-        progress=new CapsProgress {Bounds=new Rectangle(16,48,544,9),Visible=false};card.Controls.Add(progress);
-        long bytes=0;foreach(var f in Setup.Payload.files)bytes+=f.size;
-        detail=LabelAt(card,"CPU + NVIDIA CUDA  \u00b7  "+Bytes(bytes)+" download",16,88,544,24,12,Skin.Muted);
-        for(int i=0;i<3;i++) {steps[i]=LabelAt(card,(i+1)+"  "+new[]{"Download","Verify","Install"}[i],16+i*181,98,170,22,12,Skin.Muted);steps[i].Visible=false;}
-        errorDetails=new TextBox {Bounds=new Rectangle(48,242,544,104),Multiline=true,ReadOnly=true,BorderStyle=BorderStyle.None,
-            BackColor=Skin.Surface,ForeColor=Skin.Text,Font=Skin.Font(12),ScrollBars=ScrollBars.Vertical,Visible=false,AccessibleName="Installation error details"};
-        Controls.Add(errorDetails);
-        note=LabelAt(this,"Installs for your Windows account. No administrator access needed.\nAllow at least 12 GB of free space.",32,375,576,32,12,Skin.Muted);
-        detailsLink=new LinkLabel {Bounds=new Rectangle(32,375,200,28),Text="Show details",Font=Skin.Font(12),LinkColor=Skin.Text,
-            ActiveLinkColor=Skin.Accent,VisitedLinkColor=Skin.Text,Visible=false,TabIndex=3};
+    internal InstallerWindow(string previewState):base("Caps Setup") {
+        preview=previewState;
+        long bytes=0;foreach(var file in Setup.Payload.files)bytes+=file.size;
+        layout=new SetupLayout(this,false,Setup.InstallDirectory,Bytes(bytes));
+        heading=layout.Heading;description=layout.Description;note=layout.Note;stage=layout.Stage;
+        percent=layout.Percent;detail=layout.Detail;part=layout.Part;rate=layout.Rate;steps=layout.Steps;
+        folder=layout.Folder;errorDetails=layout.ErrorDetails;progress=layout.Progress;
+        primary=layout.Primary;secondary=layout.Secondary;detailsLink=layout.DetailsLink;
+        errorDetails.Bounds=new Rectangle(24,20,616,116);
         detailsLink.LinkClicked+=(s,e)=>{errorDetails.Visible=!errorDetails.Visible;errorDetails.BringToFront();detailsLink.Text=errorDetails.Visible?"Hide details":"Show details";};
-        Controls.Add(detailsLink);Controls.Add(new Panel {Bounds=new Rectangle(32,421,576,1),BackColor=Skin.Line});
-        var github=new PictureBox {Bounds=new Rectangle(32,448,18,18),SizeMode=PictureBoxSizeMode.Zoom,TabStop=false};
-        using(var stream=Assembly.GetExecutingAssembly().GetManifestResourceStream("github-mark.png"))
-        using(var image=Image.FromStream(stream))github.Image=new Bitmap(image);
-        Controls.Add(github);
-        LabelAt(this,InstallerIdentity.Publisher,58,445,254,24,12,Skin.Muted);
-        secondary=new CapsButton(false) {Bounds=new Rectangle(328,438,108,44),Text="Cancel",TabIndex=2};
-        primary=new CapsButton(true) {Bounds=new Rectangle(448,438,160,44),Text="Install Caps",TabIndex=1};
-        Controls.Add(secondary);Controls.Add(primary);AcceptButton=primary;
+        AcceptButton=primary;
         primary.Click+=(s,e)=>{if(complete) {if(preview==null)Process.Start(new ProcessStartInfo(Path.Combine(Setup.InstallDirectory,"Caps.exe")) {WorkingDirectory=Setup.InstallDirectory});Close();}
             else if(preview!=null)Preview("download");else StartInstall();};
         secondary.Click+=(s,e)=>{if(busy)StopInstall();else Close();};
         FormClosing+=(s,e)=>{if(busy){e.Cancel=true;StopInstall();}};
-        Shown+=(s,e)=>{primary.Focus();if(preview!=null)Preview(preview);};
+        Shown+=(s,e)=>{if(preview!=null)Preview(preview);};
     }
     protected override bool ProcessCmdKey(ref Message msg,Keys key) {if(key==Keys.Escape){secondary.PerformClick();return true;}return base.ProcessCmdKey(ref msg,key);}
-    protected override void OnHandleCreated(EventArgs e) {base.OnHandleCreated(e);try{int dark=1;DwmSetWindowAttribute(Handle,20,ref dark,sizeof(int));}catch(DllNotFoundException){}catch(EntryPointNotFoundException){}}
-    static Label LabelAt(Control parent,string text,int x,int y,int w,int h,float size,Color color,FontStyle style=FontStyle.Regular) {
-        var l=new Label {Text=text,Bounds=new Rectangle(x,y,w,h),Font=Skin.Font(size,style),ForeColor=color,
-            BackColor=parent is SurfacePanel?Skin.Surface:Skin.Ground,UseMnemonic=false};parent.Controls.Add(l);return l;
-    }
     internal static string Bytes(double n) {return n>=1024*1024*1024?(n/(1024*1024*1024)).ToString("0.00",CultureInfo.InvariantCulture)+" GB":(n/(1024*1024)).ToString("0.0",CultureInfo.InvariantCulture)+" MB";}
     void StopInstall() {cancellation.Cancel();secondary.Enabled=false;note.Text="Stopping installation\u2026";}
     void StartInstall() {
         cancellation=new CancellationTokenSource();busy=true;complete=false;primary.Enabled=false;primary.Text="Installing...";secondary.Enabled=true;secondary.Text="Cancel";
         folder.Visible=false;errorDetails.Visible=false;detailsLink.Visible=false;note.Visible=true;
-        foreach(var step in steps)step.Visible=true;
+        steps.Current=0;progress.Failed=false;
         progress.Visible=true;progress.Active=true;progress.Indeterminate=true;progress.Value=0;
-        clock.Restart();previousBytes=0;previousTime=0;speed=0;currentStage="";
+        clock.Restart();estimate.Reset();currentStage="";
         ApplyProgress(new InstallProgress {Stage="prepare",Message="Connecting to the release downloads"});
         Task.Factory.StartNew(()=>{
             Exception failure=null;try{Setup.Install(Setup.InstallDirectory,true,cancellation.Token,Report);}catch(Exception e){failure=e;}
@@ -287,48 +255,49 @@ sealed class InstallerWindow:Form {
     void Report(InstallProgress p) {if(!IsDisposed&&IsHandleCreated)BeginInvoke((Action)(()=>ApplyProgress(p)));}
     void ApplyProgress(InstallProgress p) {
         bool changed=currentStage!=p.Stage;
-        if(changed){currentStage=p.Stage;previousBytes=p.Current;previousTime=clock.Elapsed.TotalSeconds;speed=0;progress.Reset();}
-        heading.Text=p.Stage=="download"?"Downloading Caps":p.Stage=="verify"?"Verifying your download":p.Stage=="extract"?"Installing Caps":p.Stage=="finish"?"Almost ready":"Preparing installation";
-        description.Text=p.Stage=="download"?"Getting the CPU and NVIDIA runtimes for local caption generation.":p.Stage=="verify"?"Checking runtime data before installation.":
-            p.Stage=="extract"?"Setting up the app and its runtimes. This may take a few minutes.":"Preparing Caps for your Windows account.";
-        stage.Text=p.Message;stage.ForeColor=Skin.Text;progress.Visible=true;progress.Active=true;progress.Indeterminate=p.Total<=0;
+        if(changed){currentStage=p.Stage;estimate.Reset();progress.Reset();}
+        heading.Text=p.Stage=="finish"?"Almost ready":"Getting Caps ready";
+        description.Text="Caps makes captions right on your PC. It needs to download some speech tools first. This only happens once.";
+        stage.Text=p.Stage=="download"?"Downloading speech tools":p.Stage=="verify"?"Checking your files":p.Stage=="extract"?"Installing Caps":p.Stage=="finish"&&p.Total>0?"Registering installed files":p.Stage=="finish"?"Adding the finishing touches":"Preparing your speech tools";
+        part.Text=(p.Stage=="download"||p.Stage=="verify")&&p.Count>0?"Part "+p.Index+" of "+p.Count:p.Stage=="extract"?"Setting up the CPU and GPU tools":"Preparing Caps for your Windows account";
+        stage.ForeColor=Skin.Text;progress.Visible=true;progress.Active=true;progress.Indeterminate=p.Total<=0||p.Stage=="verify";
         double ratio=p.Total>0?Math.Max(0,Math.Min(1,(double)p.Current/p.Total)):0;progress.Value=ratio;
-        percent.Text=p.Total>0?Math.Floor(ratio*100).ToString(CultureInfo.InvariantCulture)+"%":"";
-        progress.AccessibleDescription=heading.Text+", "+percent.Text;folder.Visible=false;detail.Top=72;
+        percent.Text=!progress.Indeterminate?Math.Floor(ratio*100).ToString(CultureInfo.InvariantCulture)+"%":"";
+        progress.AccessibleName=stage.Text;progress.AccessibleDescription=stage.Text+", "+percent.Text;folder.Visible=false;
         double now=clock.Elapsed.TotalSeconds;
-        if(p.Stage=="download"&&!changed&&now-previousTime>=.5){double instant=Math.Max(0,p.Current-previousBytes)/Math.Max(.001,now-previousTime);
-            speed=speed==0?instant:.75*speed+.25*instant;previousBytes=p.Current;previousTime=now;}
-        detail.Text=p.Total>0&&p.Stage!="extract"?Bytes(p.Current)+" of "+Bytes(p.Total):"Preparing the installed app and runtimes";
-        if(p.Stage=="download"&&speed>0){long seconds=(long)Math.Ceiling(Math.Max(0,p.Total-p.Current)/speed);detail.Text+="  \u00b7  "+Bytes(speed)+"/s";
-            if(seconds>0)detail.Text+="  \u00b7  "+(seconds>=60?Math.Ceiling(seconds/60.0)+" min":seconds+" sec")+" remaining";}
+        if(p.Stage=="download")estimate.Update(now,p.Current);
+        detail.Text=p.Stage=="finish"&&p.Total>0?p.Current+" of "+p.Total+" entries":p.Total>0&&p.Stage!="extract"?Bytes(p.Current)+" of "+Bytes(p.Total):"This may take a few minutes";
+        rate.Text="";
+        if(p.Stage=="download"&&estimate.Speed>0){rate.Text=Bytes(estimate.Speed)+"/s";
+            string remaining=estimate.Remaining(Math.Max(0,p.Total-p.Current));if(remaining.Length>0)rate.Text+=" \u00b7 "+remaining;}
         int current=p.Stage=="verify"?1:p.Stage=="extract"||p.Stage=="finish"?2:0;
-        for(int i=0;i<3;i++){steps[i].Visible=true;steps[i].ForeColor=i<current?Skin.Success:i==current?Skin.Text:Skin.Muted;}
-        note.Text="You can keep using your computer while Caps installs.";if(p.Stage=="finish")secondary.Enabled=false;
+        steps.Current=current;
+        note.Text="ⓘ  You can keep using your computer while Caps installs.";if(p.Stage=="finish")secondary.Enabled=false;
     }
     void Finish(Exception error) {
         busy=false;progress.Active=false;progress.Indeterminate=false;primary.Enabled=true;secondary.Enabled=true;secondary.Text="Close";
-        folder.Visible=false;progress.Visible=true;detail.Top=72;foreach(var step in steps)step.Visible=true;
+        folder.Visible=false;progress.Visible=true;rate.Text="";part.Text="";
         if(error==null){complete=true;progress.Value=1;percent.Text="100%";heading.Text="Caps is ready";
             description.Text="Your captions stay on your computer.\nOpen Caps and choose a speech model in Settings to get started.";
             stage.Text="Installation complete";detail.Text="Caps has been added to your Start menu.";
-            foreach(var step in steps)step.ForeColor=Skin.Success;
-            note.Text="Your first model download needs an internet connection.";primary.Text="Open Caps";secondary.Text="Finish";
-        } else {bool stopped=error is OperationCanceledException;heading.Text=stopped?"Installation stopped":"Installation couldn't finish";
+            steps.Current=3;
+            note.Text="Your first model download needs an internet connection.";primary.Text="Open Caps";secondary.Text="Close";
+        } else {bool stopped=error is OperationCanceledException;heading.Text="Something went wrong";progress.Failed=true;progress.Invalidate();
             description.Text=stopped?"You can run Setup again whenever you're ready.":"Check your connection and available disk space, then try again.";
-            stage.Text=stopped?"Setup was cancelled":"Setup needs your attention";percent.Text="";detail.Text="Retry to download, verify, and install Caps.";
+            stage.Text=stopped?"Setup was cancelled":"Setup needs your attention";percent.Text="";part.Text="You can try again when you are ready";detail.Text="Retry to download, check files, and install Caps.";
             note.Text="";errorDetails.Text=error.ToString();detailsLink.Visible=!stopped;
             if(detailsLink.Visible){note.Visible=false;detailsLink.BringToFront();}primary.Text="Try again";}
         primary.Focus();
     }
     void Preview(string state) {
         if(state=="welcome")return;folder.Visible=false;primary.Enabled=false;primary.Text="Installing...";progress.Visible=true;progress.Active=true;
-        foreach(var step in steps)step.Visible=true;clock.Restart();
+        steps.Current=0;clock.Restart();
         if(state=="complete"){Finish(null);return;}if(state=="error"){Finish(new IOException("The download was interrupted. Check your internet connection and try again."));return;}
         long total=0;foreach(var f in Setup.Payload.files)total+=f.size;long current=(long)(total*.42);
         string phase=state=="verify"?"verify":state=="extract"?"extract":"download";
         Action draw=()=>ApplyProgress(new InstallProgress {Stage=phase,Current=phase=="extract"?42:current,Total=phase=="extract"?100:total,
             Index=1,Count=Setup.Payload.files.Length,Message=phase=="download"?"Runtime data - part 1 of 3":phase=="verify"?"Checking runtime data - part 1 of 3":"Installing the app and runtimes"});
-        draw();previewTimer=new System.Windows.Forms.Timer {Interval=250};previewTimer.Tick+=(s,e)=>{current=Math.Min((long)(total*.93),current+2*1024*1024);draw();};previewTimer.Start();secondary.Text="Close";
+        draw();previewTimer=new System.Windows.Forms.Timer {Interval=250};previewTimer.Tick+=(s,e)=>{current=Math.Min((long)(total*.93),current+2*1024*1024);draw();};previewTimer.Start();secondary.Text="Cancel";
     }
     protected override void Dispose(bool disposing){if(disposing){if(previewTimer!=null)previewTimer.Dispose();if(cancellation!=null)cancellation.Dispose();}base.Dispose(disposing);}
 }

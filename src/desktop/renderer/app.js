@@ -10,6 +10,7 @@ import { settingsChanged } from './settings-draft.js';
 import { generationAvailability, modelInstalled } from './generation-availability.js';
 import { mountModelCards, renderModelDownload } from './model-cards.js';
 import { createSettingsNavigation } from './settings-navigation.js';
+import { mountUpdatesAndLegal } from './updates-legal.js';
 import { deviceRecommendation } from './device-recommendation.js';
 import { DEFAULT_MODEL, NO_MODEL, AVAILABLE_MODELS, isSupportedModel, modelLabel, modelCompatibility, getModelStatus, modelInformation } from '../../model-catalog.js';
 
@@ -31,6 +32,7 @@ const captionEditor = createCaptionEditor(() => renderPreview(lastResult, $('#pr
 mountReviewScreen();
 mountPlayerControls($('#caption-player'));
 const settingsNavigation = createSettingsNavigation($('#settings-panel'), { onDiagnostics: () => refreshDiagnostics() });
+mountUpdatesAndLegal(window.caps);
 let modelCards;
 let downloadSnapshot;
 const downloadAnnouncements = new Map();

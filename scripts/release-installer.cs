@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -67,15 +68,71 @@ static class Setup {
         }
         throw new IOException("The installer payload could not be located.");
     }
-    static void KillOwnedTree(Process process) {
-        if(process==null || process.HasExited) return;
-        var start=new ProcessStartInfo(Path.Combine(Environment.SystemDirectory,"taskkill.exe"),"/PID "+process.Id+" /T /F") {
-            UseShellExecute=false, CreateNoWindow=true, RedirectStandardOutput=true, RedirectStandardError=true };
-        using(var killer=Process.Start(start)) {
-            var stdout=killer.StandardOutput.ReadToEndAsync();
-            var stderr=killer.StandardError.ReadToEndAsync();
-            killer.WaitForExit(10000);
+    // Windows owns the entire worker tree, including an extractor started by PowerShell.
+    sealed class WorkerJob:IDisposable {
+        IntPtr handle;
+        [StructLayout(LayoutKind.Sequential)] struct Limits {
+            public long ProcessTime,JobTime; public uint Flags;
+            public UIntPtr MinimumWorkingSet,MaximumWorkingSet;
+            public uint ActiveProcesses; public UIntPtr Affinity; public uint Priority,Scheduling;
         }
+        [StructLayout(LayoutKind.Sequential)] struct Counters {public ulong ReadOps,WriteOps,OtherOps,ReadBytes,WriteBytes,OtherBytes;}
+        [StructLayout(LayoutKind.Sequential)] struct ExtendedLimits {
+            public Limits Basic; public Counters Io;
+            public UIntPtr ProcessMemory,JobMemory,PeakProcessMemory,PeakJobMemory;
+        }
+        [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern IntPtr CreateJobObject(IntPtr security,string name);
+        [DllImport("kernel32.dll",SetLastError=true)] static extern bool SetInformationJobObject(IntPtr job,int kind,ref ExtendedLimits limits,uint length);
+        [DllImport("kernel32.dll",SetLastError=true)] static extern bool AssignProcessToJobObject(IntPtr job,IntPtr process);
+        [DllImport("kernel32.dll",SetLastError=true)] static extern bool TerminateJobObject(IntPtr job,uint code);
+        [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr handle);
+        internal WorkerJob() {
+            handle=CreateJobObject(IntPtr.Zero,null);
+            var limits=new ExtendedLimits();limits.Basic.Flags=0x2000; // KILL_ON_JOB_CLOSE
+            if(handle==IntPtr.Zero || !SetInformationJobObject(handle,9,ref limits,(uint)Marshal.SizeOf(limits))) {
+                int error=Marshal.GetLastWin32Error();Dispose();throw new System.ComponentModel.Win32Exception(error);
+            }
+        }
+        internal void Assign(Process process) {
+            if(!AssignProcessToJobObject(handle,process.Handle)) {
+                int error=Marshal.GetLastWin32Error();
+                if(!process.HasExited){process.Kill();process.WaitForExit();}
+                throw new System.ComponentModel.Win32Exception(error,"Could not protect the Setup worker for cancellation.");
+            }
+        }
+        internal void Stop(Process process) {
+            if(process.HasExited)return;
+            if(!TerminateJobObject(handle,1))throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+            if(!process.WaitForExit(5000))throw new IOException("The Setup worker did not stop. Close Setup and retry.");
+        }
+        public void Dispose(){if(handle!=IntPtr.Zero){CloseHandle(handle);handle=IntPtr.Zero;}}
+    }
+    internal static void MergeInstalledFiles(string destination,IEnumerable<string> incoming) {
+        string root=Path.GetFullPath(destination).TrimEnd(Path.DirectorySeparatorChar);
+        string manifest=Path.Combine(root,"installed-files.txt");
+        var names=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var sources=new List<string>(incoming);
+        if(File.Exists(manifest))sources.AddRange(File.ReadAllLines(manifest));
+        sources.Add("installed-files.txt");
+        foreach(string name in sources) {
+            if(string.IsNullOrWhiteSpace(name))continue;
+            if(Path.IsPathRooted(name))throw new IOException("Invalid installed file path.");
+            string path=Path.GetFullPath(Path.Combine(root,name));
+            if(!path.StartsWith(root+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase))throw new IOException("Installed file path escapes Caps.");
+            for(string part=path;part!=null;part=Path.GetDirectoryName(part))
+                if((File.Exists(part)||Directory.Exists(part)) && (File.GetAttributes(part)&FileAttributes.ReparsePoint)!=0)
+                    throw new IOException("A linked installed path prevents safe registration.");
+            string relative=path.Substring(root.Length+1);
+            string first=relative.Split(Path.DirectorySeparatorChar)[0];
+            if(first.Equals("data",StringComparison.OrdinalIgnoreCase)||first.Equals("models",StringComparison.OrdinalIgnoreCase))continue;
+            if(!relative.Equals("installed-files.txt",StringComparison.OrdinalIgnoreCase))names.Add(relative);
+        }
+        string temporary=Path.Combine(root,"installed-files-"+Guid.NewGuid().ToString("N")+".tmp");
+        try {
+            var ordered=new List<string>(names);ordered.Sort(StringComparer.OrdinalIgnoreCase);
+            File.WriteAllLines(temporary,ordered);
+            if(File.Exists(manifest))File.Replace(temporary,manifest,null);else File.Move(temporary,manifest);
+        } finally {if(File.Exists(temporary))File.Delete(temporary);}
     }
     internal static void Install(string destination,bool register,CancellationToken cancel,Action<InstallProgress> report) {
         string work=Path.Combine(Path.GetTempPath(),"CapsSetup-"+Guid.NewGuid().ToString("N"));
@@ -100,22 +157,24 @@ static class Setup {
                 WorkingDirectory=work,UseShellExecute=false,CreateNoWindow=true,RedirectStandardOutput=true,RedirectStandardError=true };
             start.EnvironmentVariables["CAPS_SETUP_DEST"]=destination;
             start.EnvironmentVariables["CAPS_SETUP_SOURCE"]=Path.GetDirectoryName(Executable);
+            using(var job=new WorkerJob())
             using(var process=new Process {StartInfo=start}) {
                 process.OutputDataReceived+=(s,e)=>{var progress=InstallProgress.Parse(e.Data);if(progress!=null) report(progress);};
-                cancel.ThrowIfCancellationRequested(); process.Start(); process.BeginOutputReadLine();
+                cancel.ThrowIfCancellationRequested(); process.Start(); job.Assign(process); process.BeginOutputReadLine();
                 var errors=process.StandardError.ReadToEndAsync();
                 try {
                     while(!process.WaitForExit(100)) cancel.ThrowIfCancellationRequested();
                     process.WaitForExit(); // Drain final asynchronous output.
                     cancel.ThrowIfCancellationRequested();
                     if(process.ExitCode!=0) throw new IOException(errors.Result.Trim());
-                } finally { KillOwnedTree(process); }
+                } finally { job.Stop(process); }
             }
             cancel.ThrowIfCancellationRequested();
             if(!register) return;
             report(new InstallProgress {Stage="finish",Message="Adding Caps to your Start menu"});
-            Export("uninstall.ps1",Path.Combine(destination,"Uninstall-Caps.ps1"));
-            Export("installed-files.txt",Path.Combine(destination,"installed-files.txt"));
+            Export("uninstall.exe",Path.Combine(destination,"Uninstall-Caps.exe"));
+            using(var reader=new StreamReader(Assembly.GetExecutingAssembly().GetManifestResourceStream("installed-files.txt")))
+                MergeInstalledFiles(destination,reader.ReadToEnd().Split(new[]{'\r','\n'},StringSplitOptions.RemoveEmptyEntries));
             Type type=Type.GetTypeFromProgID("WScript.Shell");
             dynamic shell=Activator.CreateInstance(type);
             dynamic link=shell.CreateShortcut(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs),"Caps.lnk"));
@@ -125,7 +184,7 @@ static class Setup {
                 key.SetValue("Publisher",InstallerIdentity.Publisher);key.SetValue("URLInfoAbout",InstallerIdentity.Url);
                 key.SetValue("DisplayIcon",Path.Combine(destination,"Caps.exe"));key.SetValue("InstallLocation",destination);
                 key.SetValue("NoModify",1,RegistryValueKind.DWord);key.SetValue("NoRepair",1,RegistryValueKind.DWord);
-                key.SetValue("UninstallString",Q(PowerShell)+" -NoProfile -ExecutionPolicy Bypass -File "+Q(Path.Combine(destination,"Uninstall-Caps.ps1")));
+                key.SetValue("UninstallString",Q(Path.Combine(destination,"Uninstall-Caps.exe")));
             }
         } finally {try {Directory.Delete(work,true);} catch(IOException) {} catch(UnauthorizedAccessException) {}}
     }
@@ -143,89 +202,6 @@ static class Setup {
         using(var form=new InstallerWindow(preview)) Application.Run(form);
         return 0;
     }
-}
-static class Skin {
-    internal static readonly Color Ground=Color.FromArgb(19,19,22),Surface=Color.FromArgb(27,27,31),Line=Color.FromArgb(44,44,50),
-        Text=Color.FromArgb(236,236,239),Muted=Color.FromArgb(160,160,170),Accent=Color.FromArgb(157,140,255),
-        OnAccent=Color.FromArgb(21,19,31),Success=Color.FromArgb(111,207,151);
-    static readonly string Face=FindFace();
-    [DllImport("user32.dll")] static extern bool SystemParametersInfo(uint action,uint parameter,out bool value,uint flags);
-    internal static bool Motion {get{bool enabled;return !SystemParametersInfo(0x1042,0,out enabled,0)||enabled;}}
-    static string FindFace() {foreach(FontFamily f in FontFamily.Families) if(f.Name=="Inter") return "Inter";return "Segoe UI";}
-    internal static Font Font(float size,FontStyle style=FontStyle.Regular) {return new Font(Face,size,style,GraphicsUnit.Pixel);}
-    internal static GraphicsPath Round(RectangleF r,float radius) {
-        var p=new GraphicsPath();float d=radius*2;
-        p.AddArc(r.X,r.Y,d,d,180,90);p.AddArc(r.Right-d,r.Y,d,d,270,90);
-        p.AddArc(r.Right-d,r.Bottom-d,d,d,0,90);p.AddArc(r.X,r.Bottom-d,d,d,90,90);p.CloseFigure();return p;
-    }
-}
-sealed class SurfacePanel:Panel {
-    internal SurfacePanel() {DoubleBuffered=true;BackColor=Skin.Ground;}
-    protected override void OnPaintBackground(PaintEventArgs e) {
-        e.Graphics.Clear(Skin.Ground);e.Graphics.SmoothingMode=SmoothingMode.AntiAlias;
-        using(var p=Skin.Round(new RectangleF(0,0,Width-1,Height-1),12))
-        using(var b=new SolidBrush(Skin.Surface)) e.Graphics.FillPath(b,p);
-    }
-}
-sealed class CapsButton:Button {
-    readonly bool primary;bool hovered;
-    internal CapsButton(bool main) {
-        primary=main;FlatStyle=FlatStyle.Flat;FlatAppearance.BorderSize=0;Font=Skin.Font(14,FontStyle.Bold);Cursor=Cursors.Hand;
-        SetStyle(ControlStyles.UserPaint|ControlStyles.OptimizedDoubleBuffer|ControlStyles.AllPaintingInWmPaint,true);
-    }
-    protected override void OnMouseEnter(EventArgs e) {hovered=true;Invalidate();base.OnMouseEnter(e);}
-    protected override void OnMouseLeave(EventArgs e) {hovered=false;Invalidate();base.OnMouseLeave(e);}
-    protected override void OnGotFocus(EventArgs e) {base.OnGotFocus(e);Invalidate();}
-    protected override void OnLostFocus(EventArgs e) {base.OnLostFocus(e);Invalidate();}
-    protected override void OnPaint(PaintEventArgs e) {
-        e.Graphics.Clear(Parent.BackColor);e.Graphics.SmoothingMode=SmoothingMode.AntiAlias;
-        Color fill=!Enabled?Skin.Line:primary?Skin.Accent:hovered?Color.FromArgb(44,44,50):Skin.Surface;
-        using(var p=Skin.Round(new RectangleF(1,1,Width-3,Height-3),10))
-        using(var b=new SolidBrush(fill)) e.Graphics.FillPath(b,p);
-        TextRenderer.DrawText(e.Graphics,Text,Font,ClientRectangle,!Enabled?Skin.Muted:primary?Skin.OnAccent:Skin.Text,
-            TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter|TextFormatFlags.NoPrefix);
-        if(Focused && ShowFocusCues)
-            using(var pen=new Pen(Skin.Text,1)) using(var p=Skin.Round(new RectangleF(4,4,Width-9,Height-9),7)) e.Graphics.DrawPath(pen,p);
-    }
-}
-sealed class CapsProgress:Control {
-    readonly System.Windows.Forms.Timer timer;double target,shown;float phase;bool active;
-    internal bool Indeterminate;
-    internal bool Active {get{return active;}set{active=value;timer.Enabled=value;if(!value){shown=target;Invalidate();}}}
-    internal double Value {get{return target;}set{
-        double before=target;target=Math.Max(0,Math.Min(1,value));
-        if(!active)shown=target;
-        if(Math.Floor(before*100)!=Math.Floor(target*100))AccessibilityNotifyClients(AccessibleEvents.ValueChange,-1);
-        Invalidate();
-    }}
-    internal void Reset() {shown=target=0;}
-    protected override AccessibleObject CreateAccessibilityInstance() {return new ProgressAccessibility(this);}
-    sealed class ProgressAccessibility:Control.ControlAccessibleObject {
-        readonly CapsProgress owner;
-        internal ProgressAccessibility(CapsProgress control):base(control){owner=control;}
-        public override string Value {get{return owner.Indeterminate?"In progress":Math.Floor(owner.Value*100).ToString(CultureInfo.InvariantCulture)+"%";}set{}}
-        public override AccessibleStates State {get{return base.State|AccessibleStates.ReadOnly;}}
-    }
-    internal CapsProgress() {
-        SetStyle(ControlStyles.UserPaint|ControlStyles.OptimizedDoubleBuffer|ControlStyles.AllPaintingInWmPaint,true);
-        AccessibleName="Installation progress";AccessibleRole=AccessibleRole.ProgressBar;
-        timer=new System.Windows.Forms.Timer {Interval=16};
-        timer.Tick+=(s,e)=>{bool motion=Skin.Motion;shown=motion&&Active?shown+(target-shown)*.16:target;
-            if(motion&&Active) phase=(phase+.012f)%1;Invalidate();};
-    }
-    protected override void OnPaint(PaintEventArgs e) {
-        e.Graphics.Clear(Skin.Surface);e.Graphics.SmoothingMode=SmoothingMode.AntiAlias;float h=Height-1;
-        using(var p=Skin.Round(new RectangleF(0,0,Width-1,h),h/2)) using(var b=new SolidBrush(Skin.Line)) e.Graphics.FillPath(b,p);
-        float w=Indeterminate?Width*.22f:(float)(shown*Width);if(w<1)return;
-        float x=Indeterminate&&Skin.Motion?(Width+w)*phase-w:0;
-        e.Graphics.SetClip(ClientRectangle);
-        using(var p=Skin.Round(new RectangleF(x,0,Math.Max(h,w),h),h/2)) using(var b=new SolidBrush(Skin.Accent)) e.Graphics.FillPath(b,p);
-        if(!Indeterminate&&Active&&Skin.Motion) {
-            e.Graphics.SetClip(new RectangleF(0,0,w,h));using(var b=new SolidBrush(Color.FromArgb(200,190,255)))e.Graphics.FillRectangle(b,w*phase-24,0,24,h);
-        }
-        e.Graphics.ResetClip();
-    }
-    protected override void Dispose(bool disposing) {if(disposing)timer.Dispose();base.Dispose(disposing);}
 }
 sealed class InstallerWindow:Form {
     readonly string preview;
@@ -274,7 +250,11 @@ sealed class InstallerWindow:Form {
             ActiveLinkColor=Skin.Accent,VisitedLinkColor=Skin.Text,Visible=false,TabIndex=3};
         detailsLink.LinkClicked+=(s,e)=>{errorDetails.Visible=!errorDetails.Visible;errorDetails.BringToFront();detailsLink.Text=errorDetails.Visible?"Hide details":"Show details";};
         Controls.Add(detailsLink);Controls.Add(new Panel {Bounds=new Rectangle(32,421,576,1),BackColor=Skin.Line});
-        LabelAt(this,InstallerIdentity.Publisher,32,445,280,24,12,Skin.Muted);
+        var github=new PictureBox {Bounds=new Rectangle(32,448,18,18),SizeMode=PictureBoxSizeMode.Zoom,TabStop=false};
+        using(var stream=Assembly.GetExecutingAssembly().GetManifestResourceStream("github-mark.png"))
+        using(var image=Image.FromStream(stream))github.Image=new Bitmap(image);
+        Controls.Add(github);
+        LabelAt(this,InstallerIdentity.Publisher,58,445,254,24,12,Skin.Muted);
         secondary=new CapsButton(false) {Bounds=new Rectangle(328,438,108,44),Text="Cancel",TabIndex=2};
         primary=new CapsButton(true) {Bounds=new Rectangle(448,438,160,44),Text="Install Caps",TabIndex=1};
         Controls.Add(secondary);Controls.Add(primary);AcceptButton=primary;

@@ -2,6 +2,7 @@
   "name": "caps",
   "version": "1.0.0-beta.1",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "Premiere-ready captions from WhisperX aligned subtitle output",
   "author": "klyde1101 (https://github.com/klyde1101)",
@@ -35,7 +36,8 @@
       "!src/main.js",
       "build/caps-icon.png",
       "build/caps-icon.ico",
-      "package.json"
+      "package.json",
+      "LICENSE"
     ],
     "directories": {
       "output": "dist"

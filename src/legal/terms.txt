@@ -1,0 +1,23 @@
+Terms of Use
+Effective: 18 November 2026
+
+Scope and operator
+These terms describe the official Caps desktop application and related project support maintained by klyde1101 at https://github.com/klyde1101/Caps. Caps is currently provided free of charge as beta software. It has no user accounts, subscriptions or hosted transcription service. There is no account to suspend or terminate.
+
+Open-source rights
+Caps's original code is licensed under the MIT License included with this app. That license, not these usage descriptions, controls permission to use, copy, modify, merge, publish, distribute, sublicense and sell the licensed code. Nothing in these terms or the supplemental EULA removes, conditions or revokes those permissions. The MIT License prevails in any conflict concerning that code. Third-party software, models, fonts and marks remain subject to their respective licenses and rights. Future fees or different terms for future services do not retroactively remove rights already granted under MIT.
+
+Your content and responsible use
+You keep your rights in your recordings and captions. Caps claims no ownership of your input files or generated output and receives no license to upload or commercially exploit them. You are responsible for having permission to process recordings and for complying with applicable copyright, privacy, recording-consent and other laws. Do not use project support to share material you lack the right to disclose, malicious attachments, credentials or other people's personal information. The maintainer may moderate project support channels under the host's rules. This is not an additional restriction on the MIT software license.
+
+Output and backups
+Automatic speech recognition and word alignment can produce mistakes, omissions, harmful language or incorrect timing. Review and correct captions before publication or reliance. Caps is not a certified medical, legal, emergency, accessibility-compliance or other safety-critical service. Keep source media and independent backups. You decide whether to overwrite files and are responsible for checking exports and recovery copies.
+
+Updates and external services
+Automatic app updates are enabled by default and can be turned off in Settings > Updates. Compatible updates download in the background and apply after normal exit; Caps does not deliberately restart during caption work. Some changes require the full installer. Downloads and support use third-party hosts with their own availability and terms. Support, compatibility, specific features and continued free distribution of future versions are not guaranteed. You may stop using or uninstall Caps at any time.
+
+Warranties and liability
+The included MIT warranty and liability provisions and the in-app Disclaimer apply to the extent permitted by applicable law. Nothing here excludes rights, remedies, duties or liability that cannot legally be excluded, including applicable mandatory consumer protections. No choice of forum or law in these documents removes those protections.
+
+Changes and contact
+Updated terms may accompany future versions; use the copy distributed with your version. They do not retroactively change the MIT grant. General project contact: https://github.com/klyde1101/Caps. Private privacy requests: klyde.penus1101@gmail.com. Public issues are not confidential; do not include personal or sensitive information there.

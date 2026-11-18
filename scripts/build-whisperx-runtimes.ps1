@@ -98,6 +98,16 @@ foreach ($device in @('cpu', 'cuda')) {
   & $runtimePython (Join-Path $PSScriptRoot 'prepare-whisperx-runtime.py') --ffmpeg-directory $ffmpegRoot
   if ($LASTEXITCODE -ne 0) { throw "The $device runtime failed codec/checkpoint preparation." }
   & (Join-Path $PSScriptRoot 'trim-runtime-development.ps1') -PythonRoot (Split-Path -Parent $runtimePython) -Apply
+  if ($LASTEXITCODE -ne 0) { throw "The $device runtime development-file cleanup failed." }
+  # Caps always resolves codecs from the verified shared ffmpeg directory.
+  # Old standalone executables beside the Python folder are no longer used.
+  $legacyExecutable = [IO.Path]::GetFullPath((Join-Path $runtimeRoot "$device\ffmpeg.exe"))
+  $expectedDeviceRoot = [IO.Path]::GetFullPath((Join-Path $runtimeRoot $device))
+  if ((Split-Path -Parent $legacyExecutable) -ne $expectedDeviceRoot) { throw 'Unexpected legacy codec path.' }
+  if (Test-Path -LiteralPath $legacyExecutable) {
+    if ((Get-Item -LiteralPath $legacyExecutable -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Refusing a linked legacy codec.' }
+    Remove-Item -LiteralPath $legacyExecutable -Force
+  }
 }
 
 Write-Output "WhisperX runtimes are ready."

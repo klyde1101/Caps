@@ -44,6 +44,7 @@ export async function verifyWindowsPackage({ unpackedRoot, electronRoot, artifac
     .filter((name) => normalize(name) !== 'main.js').map((name) => join('src', name));
   files.push('build/caps-icon.png');
   files.push('build/caps-icon.ico');
+  files.push('LICENSE');
   for (const name of files) {
     assert.ok(asar.extractFile(archive, normalize(name)).equals(await readFile(join(projectRoot, name))),
       `Packaged application file is stale: ${name}`);

@@ -15,10 +15,13 @@
   <link rel="stylesheet" href="review-tokens.css">
   <link rel="stylesheet" href="review-screen.css">
   <link rel="stylesheet" href="window-chrome.css">
+  <link rel="stylesheet" href="updates-legal.css">
+  <link rel="stylesheet" href="github-button.css">
 </head>
 <body>
   <header class="topbar">
     <div class="brand"><img class="brand-icon" src="../../assets/caps-logo.svg" alt="Caps logo"><strong class="brand-name">Caps</strong><span id="brand-engine" class="brand-engine">WhisperX</span></div>
+    <a id="github-button" class="github-button" href="https://github.com/klyde1101/Caps" target="_blank" rel="noopener noreferrer" title="Caps on GitHub" aria-label="Caps on GitHub (opens in your browser)"><img src="../../assets/github-light.webp" width="16" height="16" alt="" draggable="false"></a>
     <button id="settings-toggle" class="ghost icon-button" type="button" title="Settings" aria-label="Settings" aria-expanded="false" aria-controls="settings-panel"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m9 3 .6 2.1-1.8 1-2.1-.5-2 3.4 1.5 1.6v2L3.7 14l2 3.4 2.1-.5 1.8 1L10.2 20h3.6l.6-2.1 1.8-1 2.1.5 2-3.4-1.5-1.4v-2l1.5-1.6-2-3.4-2.1.5-1.8-1L13.8 3Z"/><circle cx="12" cy="11.5" r="3"/></svg></button>
   </header>
   <main>
@@ -122,6 +125,8 @@
         <button id="settings-model-tab" type="button" role="tab" aria-controls="settings-model-page" aria-selected="false" data-settings-page="model">Model</button>
         <button id="open-timing" type="button" role="tab" aria-controls="timing-popup" aria-selected="false" data-settings-page="timing">Timing</button>
         <button id="open-diagnostics" type="button" role="tab" aria-controls="diagnostics-popup" aria-selected="false" data-settings-page="diagnostics">Diagnostics</button>
+        <button id="settings-updates-tab" type="button" role="tab" aria-controls="settings-updates" aria-selected="false" data-settings-page="updates">Updates</button>
+        <button id="settings-legal-tab" type="button" role="tab" aria-controls="settings-legal" aria-selected="false" data-settings-page="legal">Legal</button>
       </div></nav>
       <div class="settings-scroll">
         <section id="settings-general" class="settings-page processing-settings" role="tabpanel" aria-labelledby="settings-general-tab" data-settings-pane="general">
@@ -148,6 +153,22 @@
           <div class="settings-page-heading"><h3 tabindex="-1">Caption timing</h3><p>Keep short captions readable while preserving word-aligned timestamps.</p></div>
           <div class="timing-preview" aria-label="Example caption timing"><span>Caption preview</span><p>Your story starts here.</p><div><span>00:00:01,200</span><span>00:00:02,800</span></div></div>
           <div class="number-grid"><label for="timing-min">Minimum caption duration <input id="timing-min" type="number" min="1" max="10000"><span>Milliseconds. Shorter captions are extended when timing allows.</span></label><label for="timing-bridge">Maximum word gap <input id="timing-bridge" type="number" min="0" max="5000"><span>Milliseconds. Larger gaps start a new caption.</span></label></div>
+        </section>
+        <section id="settings-updates" class="settings-page" role="tabpanel" aria-labelledby="settings-updates-tab" data-settings-pane="updates" hidden>
+          <div class="settings-page-heading"><h3 tabindex="-1">App updates</h3><p>Keep Caps up to date without downloading your speech models again.</p></div>
+          <p id="app-update-version">Caps</p>
+          <label class="auto-update-option"><input id="automatic-updates" type="checkbox" checked aria-describedby="automatic-updates-help"><span>Automatic updates</span></label>
+          <p id="automatic-updates-help">Check GitHub at startup and every six hours, download compatible updates, and install when you close Caps. Changes to this switch save immediately.</p>
+          <div class="app-update-actions"><button id="check-app-update" type="button">Check for updates</button><progress id="app-update-progress" max="100" value="0" aria-label="App update download" hidden></progress></div>
+          <p id="app-update-status" role="status" aria-live="polite">Checking update settings…</p>
+          <p class="app-update-note">Caption jobs and unsaved edits keep their normal exit protection. Some releases need the full installer. You can keep using Caps offline.</p>
+        </section>
+        <section id="settings-legal" class="settings-page" role="tabpanel" aria-labelledby="settings-legal-tab" data-settings-pane="legal" hidden>
+          <div class="settings-page-heading"><h3 tabindex="-1">Legal &amp; privacy</h3><p>Read the policies and licenses included with this version. Available offline.</p></div>
+          <label class="legal-document-choice" for="legal-document">Document</label>
+          <select id="legal-document"><option value="privacy">Privacy Policy</option><option value="terms">Terms of Service (ToS)</option><option value="eula">End-User License Agreement (EULA)</option><option value="disclaimer">Disclaimer &amp; Liability</option><option value="license">MIT License</option><option value="notices">Third-party notices</option></select>
+          <article id="legal-document-content" class="legal-document-content" tabindex="0" aria-label="Selected legal document" aria-busy="true"></article>
+          <p id="legal-document-status" role="status"></p>
         </section>
         <section id="diagnostics-popup" class="settings-page" role="tabpanel" aria-labelledby="open-diagnostics" data-settings-pane="diagnostics" hidden>
           <div class="settings-page-heading"><h3 tabindex="-1">Environment diagnostics</h3><p>Check the local tools used to transcribe, align, and export captions.</p></div>

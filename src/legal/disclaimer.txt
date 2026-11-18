@@ -1,0 +1,17 @@
+Disclaimer and Limitation of Liability
+Effective: 18 November 2026
+
+As-is beta software
+Caps is a free, experimental caption tool. To the fullest extent permitted by applicable law, the software and related materials are provided as is and as available, without express or implied warranties, including merchantability, fitness for a particular purpose, noninfringement, accuracy, uninterrupted availability or freedom from errors. The accompanying MIT License contains the controlling warranty and liability notice for Caps's original code.
+
+Review output and protect your files
+Speech recognition can misidentify speakers, invent or omit words, misrepresent meaning, and produce offensive text or inaccurate timing. Review every caption before relying on or publishing it. Caps does not provide professional medical or legal advice, emergency assistance, certified transcription or a guarantee of accessibility compliance. Hardware, drivers, downloads, updates and exports can fail. Keep original files and independent backups and check results before overwriting or deleting anything.
+
+Liability limits
+To the fullest extent permitted by law, klyde1101 and Caps contributors are not liable for claims, damages or other liability arising from the software or its use, as stated in the MIT License. This includes indirect, incidental, special or consequential loss, loss of data or profits and business interruption where exclusion is lawful. Where a complete exclusion is not enforceable but a monetary limit is permitted, aggregate liability in connection with the relevant Caps version is limited to the amount you actually paid directly to the maintainer for that version. Caps is currently free, so that amount is zero. This fallback limit applies only to the extent the law allows it.
+
+Mandatory exceptions
+Nothing in these documents excludes or limits liability for fraud, deliberate wrongdoing, gross negligence, death or personal injury, or any other matter to the extent such exclusion or limitation is prohibited by applicable law. Mandatory consumer rights and other non-waivable remedies remain intact. If a provision is unenforceable, it applies only to the lawful extent and does not override those rights.
+
+Third parties and legal obligations
+The maintainer does not control third-party hosts, dependencies, model behavior or your computer's security. Separate component licenses and legal obligations still apply. These notices do not promise that an app, website, business practice or use of captions complies with every law. The maintainer cannot guarantee protection from legal claims.

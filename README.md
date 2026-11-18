@@ -50,8 +50,16 @@ Renderer sandboxing and context isolation remain enabled, with validated IPC and
 
 Run unit/regression tests, verify packaged files, launch the EXE outside the managed runner, test real CPU/CUDA media transcription, cancel/retry a model download, and edit/save captions. Keep the current build; successful rebuilds replace the launcher without creating a rollback copy. Do not remove runtime data as temporary build output.
 
-Installer identity is configured in `build/publisher.json`. The installer displays Klyde Alexander V. Penus and sets that name in file properties and the Windows installed-app entry. This metadata is separate from Authenticode signing: the beta remains unsigned, so Windows security prompts still say “Unknown publisher.” See [Windows signing](docs/windows-signing.md). Preview the installer without installing with `Setup-x64.exe --preview welcome` (also `download`, `verify`, `extract`, `complete`, or `error`).
+Installer identity is configured in `build/publisher.json`. The installer displays a GitHub mark and klyde1101 and uses that username in file properties and the Windows installed-app entry. This metadata is separate from Authenticode signing: the beta remains unsigned, so Windows security prompts still say “Unknown publisher.” See [Windows signing](docs/windows-signing.md). Preview the installer without installing with `Setup-x64.exe --preview welcome` (also `download`, `verify`, `extract`, `complete`, or `error`).
+
+## Updates and legal notices
+
+Windows Settings > Apps > Caps > Uninstall opens the graphical uninstaller, styled to match Setup. It removes installed app/runtime files, including files tracked by later app updates, and keeps settings, downloaded models, and personal files. Close Caps before uninstalling; locked files show an error with a retry action. Run the new Setup once on an older installation to replace its PowerShell uninstall entry. Uninstaller previews accept `Uninstall-Caps.exe --preview welcome`, `remove`, `complete`, or `error` without deleting files.
+
+Updater-enabled folder builds check GitHub Releases automatically and apply compatible app-only updates after normal exit. Settings > Updates includes a manual check and an immediate automatic-update opt-out. Users of an older release must install an updater-enabled build once. See [update release instructions](docs/app-updates.md).
+
+Original Caps code is licensed under [MIT](LICENSE). Privacy Policy, Terms of Use, supplemental EULA, Disclaimer and dependency notices are available offline under Settings > Legal. Private privacy requests can be sent to klyde.penus1101@gmail.com. See [legal maintenance and outstanding release review](docs/legal-maintenance.md) for third-party redistribution requirements.
 
 ## Version history
 
-1.0.0-beta.1: WhisperX Turbo/Small, live queues, caption editor, fixed Settings layout, Automatic fallback and startup diagnostics.
+1.0.0-beta.1 (first beta candidate): WhisperX Turbo/Small, live queues, caption editor, Settings, Automatic fallback, startup diagnostics, app updates, offline legal documents, graphical uninstall and the pre-testing fixes. See [release checks](docs/release-checks.md) for remaining publication work.

@@ -21,6 +21,16 @@ foreach ($part in $files) {
 $allAdjacent = @($files | Where-Object {
     -not (Test-Path -LiteralPath (Join-Path $env:CAPS_SETUP_SOURCE $_.name) -PathType Leaf)
 }).Count -eq 0
+if ($allAdjacent -and $files.Count -gt 1 -and $files[0].name -match '^(.*)\.001$') {
+    $volumePattern = '^' + [regex]::Escape($Matches[1]) + '\.[0-9]{3}$'
+    $listedNames = @($files | ForEach-Object { $_.name })
+    $extraVolumes = @(Get-ChildItem -LiteralPath $env:CAPS_SETUP_SOURCE -File | Where-Object {
+        $_.Name -match $volumePattern -and $_.Name -notin $listedNames
+    })
+    # 7-Zip discovers neighboring volumes automatically. Isolate exactly the
+    # verified manifest volumes if an older, larger build left extra parts here.
+    if ($extraVolumes.Count) { $allAdjacent = $false }
+}
 $sources = @()
 $completed = [long]0
 $index = 0

@@ -1,6 +1,9 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 const channels = Object.freeze({
+  GET_LEGAL_DOCUMENT: 'caps:get-legal-document',
+  GET_APP_UPDATE: 'caps:get-app-update', CHECK_APP_UPDATE: 'caps:check-app-update',
+  SET_AUTO_UPDATE: 'caps:set-auto-update', APP_UPDATE_CHANGED: 'caps:app-update-changed',
   GET_MODEL_DOWNLOADS: 'caps:get-model-downloads', INSTALL_MODEL: 'caps:install-model',
   DELETE_MODEL: 'caps:delete-model',
   CREATE_MEDIA_PREVIEW: 'caps:create-media-preview', MEDIA_PREVIEW_PROGRESS: 'caps:media-preview-progress',
@@ -40,6 +43,11 @@ function subscribe(channel, listener) {
 }
 
 contextBridge.exposeInMainWorld('caps', Object.freeze({
+  getLegalDocument: id => invoke(channels.GET_LEGAL_DOCUMENT, id),
+  getAppUpdate: () => invoke(channels.GET_APP_UPDATE),
+  checkAppUpdate: () => invoke(channels.CHECK_APP_UPDATE),
+  setAutoUpdate: automatic => invoke(channels.SET_AUTO_UPDATE, automatic),
+  onAppUpdate: listener => subscribe(channels.APP_UPDATE_CHANGED, listener),
   createMediaPreview: token => invoke(channels.CREATE_MEDIA_PREVIEW, token),
   onMediaPreviewProgress: listener => subscribe(channels.MEDIA_PREVIEW_PROGRESS, listener),
   deleteModel: (id) => invoke(channels.DELETE_MODEL, id),

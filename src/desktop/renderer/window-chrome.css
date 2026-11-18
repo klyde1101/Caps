@@ -4,6 +4,7 @@
   --chrome-control-width: 46px;
   --chrome-native-controls-width: 138px;
   --chrome-icon-size: 16px;
+  --chrome-settings-divider-gap: calc((var(--chrome-control-width) - var(--chrome-icon-size)) / 2);
   --chrome-symbol-color: #ECECEF;
   --chrome-button-hover: rgba(255, 255, 255, .1);
   --chrome-separator-inset: 20px;
@@ -14,7 +15,7 @@
 .topbar #settings-toggle {
   position: absolute;
   top: 0;
-  right: max(var(--chrome-native-controls-width), calc(100vw - env(titlebar-area-width, calc(100vw - var(--chrome-native-controls-width)))));
+  right: calc(max(var(--chrome-native-controls-width), calc(100vw - env(titlebar-area-width, calc(100vw - var(--chrome-native-controls-width))))) + var(--chrome-settings-divider-gap));
   display: grid;
   place-items: center;
   width: var(--chrome-control-width);
@@ -31,7 +32,7 @@
 .topbar #settings-toggle::before {
   content: '';
   position: absolute;
-  right: 0;
+  right: calc(-1 * var(--chrome-settings-divider-gap));
   top: var(--chrome-separator-inset);
   bottom: var(--chrome-separator-inset);
   border-right: 1px solid var(--line);

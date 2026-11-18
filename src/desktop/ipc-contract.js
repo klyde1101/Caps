@@ -3,6 +3,9 @@ import { CAPTION_LAYOUTS, CAPTION_FONT_SIZES, CAPTION_FONTS } from '../captions/
 import { isSupportedModel, NO_MODEL } from '../model-catalog.js';
 
 export const IPC_CHANNELS = Object.freeze({
+  GET_LEGAL_DOCUMENT: 'caps:get-legal-document',
+  GET_APP_UPDATE: 'caps:get-app-update', CHECK_APP_UPDATE: 'caps:check-app-update',
+  SET_AUTO_UPDATE: 'caps:set-auto-update', APP_UPDATE_CHANGED: 'caps:app-update-changed',
   GET_MODEL_DOWNLOADS: 'caps:get-model-downloads', INSTALL_MODEL: 'caps:install-model',
   DELETE_MODEL: 'caps:delete-model',
   CREATE_MEDIA_PREVIEW: 'caps:create-media-preview', MEDIA_PREVIEW_PROGRESS: 'caps:media-preview-progress',

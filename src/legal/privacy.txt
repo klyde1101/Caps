@@ -1,0 +1,32 @@
+Privacy Policy
+Effective: 18 November 2026
+
+Who and what this covers
+Caps is a free Windows caption application maintained by klyde1101, whose project is at https://github.com/klyde1101/Caps. This policy covers the official desktop app and its update and model-download features. It does not cover independently modified versions, GitHub itself, or any future website with different data practices.
+
+Media and captions stay local
+Caps reads the audio, video, subtitles and file paths you select to transcribe, align, preview, edit and export captions on your computer. Caps does not upload your media or captions to the maintainer, GitHub, Hugging Face or an AI transcription service. You retain control of these files. Processing another person's recordings may require their consent or another legal basis; you are responsible for that processing.
+
+Local settings, diagnostics and temporary files
+Caps stores preferences, download state and update files under the installation's data folder. Settings include model, device and caption preferences. Logs and local crash dumps can include technical errors, hardware information and local paths, which may reveal a Windows username or file name. Playback conversion caches and caption-recovery files may contain your content. Models and speech resources are kept locally in the models and whisperx folders. Exports and recovery copies are saved beside your media or captions. These files help Caps function, diagnose failures and recover your work; they are not automatically sent to the maintainer. Copy diagnostics copies information to your clipboard; review and redact it before sharing it.
+
+Internet requests and who receives them
+After startup, Caps contacts Hugging Face for supported model metadata. When you choose to download a model, Caps requests model files from Hugging Face and its download infrastructure, and shared speech resources from GitHub Releases and its download infrastructure. Installation also fetches runtime files from GitHub when they are not supplied locally.
+
+Automatic app updates are on by default. Caps checks the public GitHub release list shortly after startup and about every six hours while open. When a compatible newer release exists, it downloads app files and applies them after you close Caps normally. Manual update checks make the same requests. The app compares its version locally; these requests do not send media, captions, an account token, advertising identifiers or a unique Caps installation identifier.
+
+Network providers necessarily receive your IP address, request time, requested file or API address and technical request headers, such as a user-agent identifying Caps or a download library. They may record these requests and process them in other countries under their own policies. Caps does not control their retention or international-transfer arrangements. Their policies are at https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement and https://huggingface.co/privacy. Standard hosting statistics available to the project may include aggregate release-download counts. Caps has no advertising, tracking analytics, account registration, sale of personal data or automatic crash-report upload. The model downloader disables Hugging Face telemetry and implicit account tokens.
+
+Choices and offline use
+Turn off Automatic updates in Settings > Updates to stop scheduled app-update requests and cancel a current update download or queued application. You may still check manually. This switch does not disable model-catalog requests or model downloads. To prevent all network requests, block Caps using your operating-system network controls or use it without an internet connection. With the necessary models and speech resources installed, caption generation and editing work offline.
+
+Retention and deleting local data
+Local data remains until you delete it, uninstall it, or Caps replaces a cache or update file; logs may grow over time. Quit Caps before deleting files. Back up your work first. You can remove models in Settings > Model. To remove preferences, logs, crash dumps, playback caches and update downloads, delete the installation's data folder. Delete exports and recovery copies separately beside their source files. Uninstalling does not necessarily remove every user-created file. These local records are not held on a maintainer server and cannot be retrieved or deleted remotely by the maintainer. Network-provider logs and public GitHub posts have separate retention rules.
+
+Your privacy rights and contacting the project
+Depending on your location and the law that applies, you may have rights to information, access, correction, deletion, restriction or objection, portability, withdrawal of consent where consent is used, and a complaint to your local privacy authority. These rights and exceptions depend on the circumstances; this policy does not claim universal GDPR, CCPA or Philippine Data Privacy Act compliance. Where the maintainer receives personal information you voluntarily submit for support, it is used to respond to that request and address the reported issue, subject to applicable law and the hosting provider's policy. Where required, responding to support requests or maintaining the project may rely on legitimate interests or your requested service; a separate notice or consent will be obtained before introducing materially different processing that requires it.
+
+Private privacy requests: email klyde1101 at klyde.penus1101@gmail.com. Include only the information needed to describe your request; do not send passwords or unnecessary recordings, transcripts, IDs or other sensitive information. General project contact is available at https://github.com/klyde1101/Caps. Public issues are public and are not a private privacy-request channel; do not post personal or sensitive information there. For GitHub- or Hugging Face-held data, use that provider's privacy contact. For local data, use the deletion steps above. The maintainer cannot promise to erase copies independently retained by other people or hosts.
+
+Changes and children
+Material changes to these practices will be reflected in an updated policy distributed with the app. Caps does not knowingly solicit children's personal information and has no child account system. Do not send children's personal information through public support channels. Applicable legal rights remain in force regardless of this policy.

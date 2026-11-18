@@ -63,7 +63,7 @@ test('release metadata configures one self-contained Windows build', async () =>
   assert.equal(packageData.build.portable.splashImage, 'build/caps-launch-splash.bmp');
   assert.equal(packageData.build.win.artifactName, 'Caps-${version}.${ext}');
   assert.equal(packageData.build.nsis, undefined);
-  assert.deepEqual(packageData.build.files, ['src/**/*', '!src/main.js', 'build/caps-icon.png', 'build/caps-icon.ico', 'package.json']);
+  assert.deepEqual(packageData.build.files, ['src/**/*', '!src/main.js', 'build/caps-icon.png', 'build/caps-icon.ico', 'package.json', 'LICENSE']);
   assert.equal(packageData.build.extraFiles, undefined);
   const icon = await readFile(join(projectRoot, 'build', 'caps-icon.ico'));
   assert.deepEqual([...icon.subarray(0, 4)], [0, 0, 1, 0]);

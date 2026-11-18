@@ -8,6 +8,7 @@ import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'node:http';
 import { promisify } from 'node:util';
+import { setTimeout } from 'node:timers/promises';
 
 const run = promisify(execFile);
 const project = fileURLToPath(new URL('..', import.meta.url));
@@ -43,7 +44,7 @@ if mode=='cancel':
  harness.write_text('using System;using System.Threading;class CancelTest{static int Main(string[] args){using(var c=new CancellationTokenSource()){c.CancelAfter(2500);try{Setup.Install(args[1],false,c.Token,p=>{});return 9;}catch(OperationCanceledException){return 0;}}}}')
  original=builder.run
  def compile_cancel(*args,**kwargs):
-  if '/target:winexe' in args: args=(*args,'/main:CancelTest',harness)
+  if any(str(arg).endswith('release-installer.cs') for arg in args): args=(*args,'/main:CancelTest',harness)
   return original(*args,**kwargs)
  builder.run=compile_cancel
 builder.build_installer(pathlib.Path(sys.argv[3]),files,names,archive,mode=='embedded',sys.argv[4])
@@ -51,6 +52,9 @@ if mode=='mixed':
  shutil.copyfile(files[0],builder.RELEASE/files[0].name)
 elif mode=='corrupt':
  for part in files: shutil.copyfile(part,builder.RELEASE/part.name)
+elif mode=='extra-volume':
+ for part in files: shutil.copyfile(part,builder.RELEASE/part.name)
+ (builder.RELEASE/'runtime.zip.004').write_bytes(b'obsolete volume from a larger build')
 `;
 
 async function fixture(mode, action) {
@@ -120,11 +124,22 @@ test('Setup extracts a bundled archive from its signature-compatible payload foo
   });
 });
 
+test('Setup isolates manifest volumes when stale extra parts are beside the installer', { skip: !available }, async () => {
+  await fixture('extra-volume', async ({ installer, output, requests }) => {
+    await run(installer, ['--extract-to', output], { windowsHide: true, timeout: 20000 });
+    assert.equal(await readFile(join(output, 'Caps.exe'), 'utf8'), 'installer test fixture only');
+    assert.equal(requests.length, 0);
+    const events = (await readFile(output + '.setup-progress.log', 'utf8')).trim().split(/\r?\n/).map(JSON.parse);
+    assert.equal(events.filter(event => event.Stage === 'prepare').length, 3, 'only the three verified volumes are copied to private staging');
+  });
+});
+
 test('cancelling an active download stops its child process and closes the connection', { skip: !available }, async () => {
   await fixture('cancel', async ({ installer, output, requests, ended }) => {
     const started = Date.now();
     await run(installer, ['--extract-to', output], { windowsHide: true, timeout: 12000 });
     assert.ok(requests.length > 0, 'Cancellation must interrupt a real download');
+    for (let attempt = 0; !ended() && attempt < 20; attempt++) await setTimeout(50);
     assert.ok(ended() > 0, 'The cancelled worker must release its download connection');
     assert.ok(Date.now() - started < 10000);
     await assert.rejects(readdir(output), { code: 'ENOENT' });

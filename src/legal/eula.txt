@@ -1,0 +1,17 @@
+End-User License Agreement — Open-Source Notice
+Effective: 18 November 2026
+
+License grant
+Caps's original software is provided under the accompanying MIT License by klyde1101 and its contributors. You may use, copy, modify, merge, publish, distribute, sublicense and sell copies subject to that license, including its requirement to preserve the copyright and permission notices. This supplemental EULA explains the distribution; it does not require separate acceptance, ban redistribution or reverse engineering, limit commercial use, or revoke MIT permissions. In a conflict, the MIT License governs the original code.
+
+Your responsibilities
+You control which local recordings are processed and where captions are exported. Obtain the rights or permissions legally required for your content and use. Review generated text and timing, preserve backups, and follow the applicable licenses when redistributing components. The project's Terms of Use explain official support and app behavior without adding restrictions to the open-source grant.
+
+Third-party components and trademarks
+Electron, Chromium, Node.js, Python, WhisperX, inference libraries, FFmpeg, NVIDIA components, model weights, icons and other dependencies are not relicensed by Caps's MIT License. Preserve their applicable notices and fulfill their license and, where applicable, source-availability obligations. Downloaded models can have terms different from code. Software permissions do not grant a trademark license to use another party's name or logo in a way suggesting endorsement. Modified builds should identify their changes so users can distinguish them from official releases.
+
+Warranty, liability and ending use
+Caps is provided as is under the MIT License, with the qualifications in the Disclaimer and any mandatory rights provided by law. No support or maintenance contract is created. You can stop using or uninstall Caps at any time. Uninstalling does not automatically delete your media, caption exports or every local data file. The MIT License does not add an account-termination mechanism; rights already granted remain governed by that license.
+
+Source and contact
+Project and source: https://github.com/klyde1101/Caps. General contact is through that project page. Private privacy requests: klyde.penus1101@gmail.com. Public support is not confidential; do not post personal or sensitive information there.

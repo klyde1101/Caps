@@ -19,6 +19,13 @@ let saveCount = 0;
 const downloads = { activeId: null, models: { 'large-v3-turbo': { state: 'installed' }, small: { state: 'idle' } },
   catalog: { 'large-v3-turbo': { totalBytes: 1620000000 }, small: { totalBytes: 486000000 } } };
 contextBridge.exposeInMainWorld('caps', {
+  getAppUpdate: async () => ({ state: 'current', version: '1.0.0-beta.1', automatic: true, message: 'You have the latest version.' }),
+  checkAppUpdate: async () => ({ state: 'ready', version: '1.0.0-beta.1', availableVersion: '1.0.1', automatic: true, message: 'Caps 1.0.1 is ready. It will install when you close Caps.' }),
+  setAutoUpdate: async automatic => ({ state: 'idle', version: '1.0.0-beta.1', automatic, message: automatic ? 'Automatic updates are on.' : 'Automatic updates are off. You can still check manually.' }),
+  getLegalDocument: async id => {
+    const response = require('electron').ipcRenderer;
+    return response.invoke('qa:legal-document', id);
+  },
   getSettings: async () => structuredClone(settings),
   getModelDownloads: async () => structuredClone(downloads),
   onModelDownloads: (listener) => { downloadListener = listener; },

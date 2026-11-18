@@ -1,7 +1,7 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, shell, nativeTheme } from 'electron';
 import { stat } from 'node:fs/promises';
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
-import { basename, dirname, extname, join, resolve } from 'node:path';
+import { basename, dirname, extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { IPC_CHANNELS, SUPPORTED_EXTENSIONS, serializeError, validateBatchRequests, validateOutputPath, validateStartRequest, validateQueueChange } from './ipc-contract.js';
 import { createJobEventForwarder } from './job-event-forwarder.js';
@@ -13,6 +13,9 @@ import { createSettingsStore } from './settings-store.js';
 import { createSplashWindowOptions, createWindowOptions, SECURITY_WEB_PREFERENCES } from './window-config.js';
 import { prepareOutput } from './output-safeguards.js';
 import { ModelDownloadManager } from './model-download-manager.js';
+import { AppUpdates } from './app-updates.js';
+import { readLegalDocument } from './legal-documents.js';
+import { protectWindowClose } from './window-close-guard.js';
 import { protectRendererFromFraming } from './renderer-policy.js';
 import { createWarmTranscriberPool } from '../warm-transcriber.js';
 import { AVAILABLE_MODELS, NO_MODEL, modelLabel } from '../model-catalog.js';
@@ -27,6 +30,13 @@ const runtimeDirectory = process.env.PORTABLE_EXECUTABLE_DIR || (app.isPackaged 
 if (runtimeDirectory) {
   app.setPath('userData', join(runtimeDirectory, 'data'));
 }
+// One writer per installation for settings, downloads and queued app updates.
+if (!app.requestSingleInstanceLock()) app.exit(0);
+app.on('second-instance', () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show(); mainWindow.focus();
+});
 
 function startupLog(stage, error = '') {
   try { const root = runtimeDirectory || process.cwd(); mkdirSync(join(root, 'data'), { recursive: true });
@@ -60,13 +70,21 @@ const jobs = new JobController(async (request) => {
 let mainWindow;
 let splashWindow;
 let launchComplete = false;
-let forceQuit = false;
 let diagnosticsCache;
 let diagnosticsPromise;
 let downloadShutdownComplete = false;
+let updateLaunchComplete = false;
 let downloadsReady = Promise.resolve();
 let admittingJobs = 0;
 const installedDownloadIds = new Set();
+const appUpdates = new AppUpdates({ root: runtimeDirectory || process.cwd(), version: app.getVersion(),
+  enabled: app.isPackaged && process.platform === 'win32' && Boolean(process.env.PORTABLE_EXECUTABLE_DIR)
+    && /^dist[\\/]app-[a-f0-9]{24}[\\/]Caps\.exe$/i.test(relative(runtimeDirectory, process.execPath)),
+  onChange(snapshot) {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(IPC_CHANNELS.APP_UPDATE_CHANGED, snapshot);
+  }
+});
+let updateTimer, updateInterval;
 const modelDownloads = new ModelDownloadManager({
   root: runtimeDirectory || resolve(desktopDirectory, '../..'),
   isModelInUse: () => jobs.active || admittingJobs > 0,
@@ -161,6 +179,14 @@ function safeHandler(handler) {
 }
 
 function registerIpcHandlers(settings) {
+  ipcMain.handle(IPC_CHANNELS.GET_LEGAL_DOCUMENT, safeHandler(async (_event, id) => readLegalDocument(id)));
+  ipcMain.handle(IPC_CHANNELS.GET_APP_UPDATE, safeHandler(async () => appUpdates.snapshot()));
+  ipcMain.handle(IPC_CHANNELS.CHECK_APP_UPDATE, safeHandler(async () => appUpdates.check()));
+  ipcMain.handle(IPC_CHANNELS.SET_AUTO_UPDATE, safeHandler(async (_event, automatic) => {
+    const snapshot = await appUpdates.setAutomatic(automatic);
+    if (automatic) void appUpdates.check();
+    return snapshot;
+  }));
   ipcMain.handle(IPC_CHANNELS.CREATE_MEDIA_PREVIEW, safeHandler(async (event, token) =>
     mediaPreviews.create(token, progress => { if (!event.sender.isDestroyed()) event.sender.send(IPC_CHANNELS.MEDIA_PREVIEW_PROGRESS, progress); })));
   const jobHandler = handler => safeHandler(async (...args) => {
@@ -323,7 +349,7 @@ function createWindow() {
   mainWindow.webContents.on('render-process-gone', (_event, details) => startupLog('renderer-gone', JSON.stringify(details)));
   mainWindow.removeMenu();
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url === 'https://github.com/klyde1101') void shell.openExternal(url);
+    if (url === 'https://github.com/klyde1101' || url === 'https://github.com/klyde1101/Caps') void shell.openExternal(url);
     return { action: 'deny' };
   });
   mainWindow.webContents.on('will-navigate', (event) => event.preventDefault());
@@ -349,24 +375,18 @@ function createWindow() {
     // Network metadata is useful in Settings, but never gates first paint.
     void downloadsReady.then(() => modelDownloads.refreshCatalog());
   });
-  mainWindow.on('close', (event) => {
-    if (!jobs.active || forceQuit) return;
-    const choice = dialog.showMessageBoxSync(mainWindow, {
+  protectWindowClose(mainWindow, { jobs,
+    confirmCancel: () => dialog.showMessageBoxSync(mainWindow, {
       type: 'warning',
       buttons: ['Keep Processing', 'Cancel Job and Exit'],
       defaultId: 0,
       cancelId: 0,
       message: 'A caption job is still running.',
       detail: 'Closing Caps will cancel the active transcription.'
-    });
-    if (choice === 0) event.preventDefault();
-    else {
-      forceQuit = true;
-      event.preventDefault();
-      jobs.cancelAndWait().finally(() => {
-        mainWindow.destroy();
-        app.quit();
-      });
+    }) === 1,
+    onError: error => {
+      startupLog('job-cancel-on-exit-failed', error);
+      dialog.showErrorBox('Caps could not close', 'The caption job could not be stopped. Your window remains open. Try again.');
     }
   });
   mainWindow.loadFile(rendererPath);
@@ -377,6 +397,11 @@ app.whenReady().then(async () => {
   downloadsReady = modelDownloads.initialize().catch(error => startupLog('download-state-failed', error));
   registerIpcHandlers(createSettingsStore(app.getPath('userData')));
   createWindow();
+  void appUpdates.initialize().then(() => {
+    const check = () => { if (appUpdates.snapshot().automatic) void appUpdates.check(); };
+    updateTimer = setTimeout(check, 15000); updateTimer.unref();
+    updateInterval = setInterval(check, 6 * 60 * 60 * 1000); updateInterval.unref();
+  });
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
@@ -388,8 +413,15 @@ app.on('window-all-closed', () => {
 
 // Stop downloads only after existing job/unsaved-edit close guards have accepted exit.
 app.on('will-quit', (event) => {
-  if (downloadShutdownComplete) return;
+  if (downloadShutdownComplete) {
+    if (updateLaunchComplete) return;
+    event.preventDefault();
+    void appUpdates.applyOnExit().catch(error => startupLog('update-launch-failed', error))
+      .finally(() => { updateLaunchComplete = true; app.quit(); });
+    return;
+  }
   event.preventDefault();
-  void Promise.allSettled([modelDownloads.shutdown(), warmTranscribers.shutdown()])
+  clearTimeout(updateTimer); clearInterval(updateInterval);
+  void Promise.allSettled([modelDownloads.shutdown(), warmTranscribers.shutdown(), appUpdates.shutdown()])
     .finally(() => { downloadShutdownComplete = true; app.quit(); });
 });

@@ -1,6 +1,6 @@
 # Windows publisher identity
 
-The declared author is **Klyde Alexander V. Penus**, configured in `build/publisher.json`. Setup uses it in its interface, Company name file property, and the Windows installed-app Publisher entry.
+The declared author is **klyde1101**, configured in `build/publisher.json`. Setup displays the username beside a GitHub mark and uses it in the Company name file property and the Windows installed-app Publisher entry. This metadata does not set the publisher shown by Windows security prompts.
 
 Windows' security prompt verifies a digital signature. File properties and a self-signed certificate do not establish public publisher trust. This beta has no trusted code-signing certificate and remains unsigned.
 

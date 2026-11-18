@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path, PureWindowsPath
 import shutil
+import stat
 import subprocess
 import tempfile
 import zipfile
@@ -18,6 +19,22 @@ VERSION = json.loads((ROOT / "package.json").read_text())["version"]
 PREFIX = f"Caps-{VERSION}"
 EXCLUDES = ["__pycache__", "*.pyc", "*.onnx", "*.pt", "*.ckpt", "*.safetensors",
             "pytorch_model.bin*", "model.bin", "*.jit", "wav2vec*.pth"]
+LEGACY_CODECS = {"whisperx/cpu/ffmpeg.exe", "whisperx/cuda/ffmpeg.exe"}
+
+
+def remove_obsolete_parts(release, archive_name, active_names):
+    release = release.resolve()
+    removed = []
+    for part in release.glob(archive_name + '.[0-9][0-9][0-9]'):
+        if part.name in active_names:
+            continue
+        if part.is_symlink() or part.resolve().parent != release or not part.is_file():
+            raise ValueError('Unsafe obsolete runtime part.')
+        if getattr(part.lstat(), 'st_file_attributes', 0) & getattr(stat, 'FILE_ATTRIBUTE_REPARSE_POINT', 1024):
+            raise ValueError('Linked obsolete runtime part.')
+        part.unlink()
+        removed.append(part.name)
+    return removed
 
 
 class SplitArchive(io.RawIOBase):
@@ -77,6 +94,19 @@ def digest(path):
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
+def payload_digest(parts):
+    checksum = hashlib.sha256()
+    for part in parts:
+        with part.open('rb') as stream:
+            while block := stream.read(4 * 1024**2):
+                checksum.update(block)
+    return checksum.hexdigest()
+
+
+def runtime_archive_name(prefix, checksum):
+    return f'{prefix}-Support-Runtime-{checksum[:16]}-x64.zip'
+
+
 def run(*args, **kwargs):
     return subprocess.run(args, check=True, cwd=ROOT, **kwargs)
 
@@ -90,7 +120,10 @@ def build_installer(seven, files, names, archive=None, embedded=False, base_url=
                             "embeddedSize": archive_size if embedded else 0,
                             "files": [{"name": p.name, "sha256": digest(p), "size": p.stat().st_size} for p in files]}))
         removal = work / "installed-files.txt"
-        removal.write_text("\n".join(str(p) for p in sorted(names, key=lambda p: len(p.parts), reverse=True)), encoding="utf-8")
+        owned = set(names)
+        for name in names:
+            owned.update(parent for parent in name.parents if str(parent) != ".")
+        removal.write_text("\n".join(str(p) for p in sorted(owned, key=lambda p: len(p.parts), reverse=True)), encoding="utf-8")
         installer = RELEASE / f"{PREFIX}-Setup-x64.exe"
         staged_installer = work / installer.name
         metadata = work / "version.cs"
@@ -109,13 +142,27 @@ def build_installer(seven, files, names, archive=None, embedded=False, base_url=
             '}',
         ]), encoding="utf-8")
         csc = Path(os.environ["WINDIR"]) / "Microsoft.NET/Framework64/v4.0.30319/csc.exe"
+        uninstaller = work / "Uninstall-Caps.exe"
+        uninstall_metadata = work / "uninstall-version.cs"
+        uninstall_metadata.write_text(metadata.read_text(encoding="utf-8").replace(
+            'AssemblyTitle("Caps Setup")', 'AssemblyTitle("Uninstall Caps")').replace(
+            'AssemblyDescription("Windows installer for Caps")', 'AssemblyDescription("Windows uninstaller for Caps")'), encoding="utf-8")
+        run(csc, "/nologo", "/target:winexe", "/platform:x64", "/optimize+",
+            "/reference:System.Windows.Forms.dll", "/reference:System.Drawing.dll",
+            f"/win32icon:{ROOT / 'build/caps-icon.ico'}", f"/out:{uninstaller}",
+            f"/resource:{ROOT / 'build/caps-icon.png'},caps-icon.png",
+            f"/resource:{ROOT / 'build/github-mark.png'},github-mark.png",
+            f"/resource:{ROOT / 'build/github-mark-LICENSE.txt'},github-mark-LICENSE.txt",
+            uninstall_metadata, ROOT / "scripts/release-skin.cs", ROOT / "scripts/release-uninstaller.cs")
         run(csc, "/nologo", "/target:winexe", "/platform:x64", "/optimize+", "/reference:System.Windows.Forms.dll",
             "/reference:Microsoft.CSharp.dll", "/reference:System.Drawing.dll", "/reference:System.Web.Extensions.dll",
             f"/win32icon:{ROOT / 'build/caps-icon.ico'}", f"/out:{staged_installer}",
             f"/resource:{ROOT / 'build/caps-icon.png'},caps-icon.png",
+            f"/resource:{ROOT / 'build/github-mark.png'},github-mark.png",
+            f"/resource:{ROOT / 'build/github-mark-LICENSE.txt'},github-mark-LICENSE.txt",
             f"/resource:{seven},7za.exe", f"/resource:{manifest},payload.json",
             f"/resource:{removal},installed-files.txt", f"/resource:{ROOT / 'scripts/install-release-payload.ps1'},install-release-payload.ps1",
-            f"/resource:{ROOT / 'scripts/uninstall-release.ps1'},uninstall.ps1", metadata, ROOT / "scripts/release-installer.cs")
+            f"/resource:{uninstaller},uninstall.exe", metadata, ROOT / "scripts/release-skin.cs", ROOT / "scripts/release-installer.cs")
         with staged_installer.open("ab") as output:
             if embedded:
                 with archive.open("rb") as source:
@@ -127,6 +174,8 @@ def build_installer(seven, files, names, archive=None, embedded=False, base_url=
 
 
 def main():
+    from build_app_update import build_update
+    from verify_release import write_provenance
     parser = argparse.ArgumentParser()
     parser.add_argument("--seven", required=True)
     parser.add_argument("--makensis", help=argparse.SUPPRESS)
@@ -153,10 +202,21 @@ def main():
                     for name in filenames:
                         if not any(fnmatch(name, pattern) for pattern in EXCLUDES):
                             path = Path(directory) / name
-                            payload.write(path, path.relative_to(ROOT))
-    parts = sorted(RELEASE.glob(archive.name + ".[0-9][0-9][0-9]")) if args.prepared_parts else []
+                            relative = path.relative_to(ROOT)
+                            if relative.as_posix() not in LEGACY_CODECS:
+                                payload.write(path, relative)
+    parts = []
+    if args.prepared_parts:
+        proof_path = RELEASE / f'{PREFIX}-Build.json'
+        declared = json.loads(proof_path.read_text()).get('installerRuntimeFiles', []) if proof_path.exists() else []
+        if declared:
+            if any(Path(name).name != name or not name.startswith(PREFIX + '-Support-Runtime-') for name in declared):
+                raise ValueError('Invalid prepared runtime asset names')
+            parts = [RELEASE / name for name in declared]
+        else:
+            parts = sorted(RELEASE.glob(archive.name + ".[0-9][0-9][0-9]"))
     if args.prepared_parts and (not parts or any(
-            p.name != archive.name + f".{index:03}" or p.stat().st_size == 0
+            p.name != parts[0].name[:-3] + f"{index:03}" or not parts[0].name.endswith('.001') or p.stat().st_size == 0
             for index, p in enumerate(parts, 1))):
         raise ValueError("Missing or non-contiguous installer runtime ZIP parts")
     with (SplitArchive(parts) if args.prepared_parts else archive.open("rb")) as source, zipfile.ZipFile(source) as payload:
@@ -167,9 +227,31 @@ def main():
         if payload.testzip() is not None:
             raise ValueError("Installer runtime ZIP integrity check failed.")
     if not names or any(p.parts[0] not in ("Caps.exe", "dist", "whisperx") or
+                        p.as_posix() in LEGACY_CODECS or
                         any(p.match(pattern) for pattern in EXCLUDES) or p.is_absolute() or ".." in p.parts
                         for p in names):
         raise ValueError("Unexpected release archive contents")
+    # Published installers embed these names. Content-addressed runtime assets
+    # let a same-version release update keep old installers' downloads intact.
+    named_archive = RELEASE / runtime_archive_name(PREFIX, payload_digest(parts) if parts else digest(archive))
+    if parts:
+        named_parts = []
+        for index, part in enumerate(parts, 1):
+            destination = RELEASE / f'{named_archive.name}.{index:03}'
+            if part != destination:
+                if destination.exists():
+                    if digest(destination) != digest(part):
+                        raise ValueError('A content-addressed runtime asset already differs')
+                    part.unlink()
+                else:
+                    part.rename(destination)
+            named_parts.append(destination)
+        parts = named_parts
+    elif archive != named_archive:
+        if named_archive.exists() and digest(named_archive) != digest(archive):
+            raise ValueError('A content-addressed runtime archive already differs')
+        os.replace(archive, named_archive)
+    archive = named_archive
     # Leave headroom for the installer wrapper and GitHub's per-asset size limit.
     limit = 1900 * 1024**2
     archive_size = sum(p.stat().st_size for p in parts) if args.prepared_parts else archive.stat().st_size
@@ -188,8 +270,10 @@ def main():
                         remaining -= len(block)
                 files.append(part)
     installer = build_installer(seven, files, names, archive, embedded)
-    files += [installer, RELEASE / f"{PREFIX}-Speech-Resources.zip"]
+    files += [installer, RELEASE / f"{PREFIX}-Speech-Resources.zip", *build_update(runtime)]
+    files.append(write_provenance(ROOT, Path(runtime), files))
     (RELEASE / "SHA256SUMS.txt").write_text("".join(f"{digest(p)}  {p.name}\n" for p in files))
+    remove_obsolete_parts(RELEASE, archive.name, {p.name for p in files})
     if split:
         archive.unlink()
     print("Completed:", ", ".join(p.name for p in files))

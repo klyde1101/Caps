@@ -1,0 +1,28 @@
+/* Match Settings and keep the native title-bar area clear. */
+.topbar .github-button {
+  position: absolute;
+  top: 0;
+  right: calc(max(var(--chrome-native-controls-width), calc(100vw - env(titlebar-area-width, calc(100vw - var(--chrome-native-controls-width))))) + var(--chrome-control-width) + var(--chrome-settings-divider-gap));
+  display: grid;
+  place-items: center;
+  width: var(--chrome-control-width);
+  height: var(--chrome-controls-height);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--chrome-symbol-color);
+  text-decoration: none;
+  -webkit-app-region: no-drag;
+  -webkit-tap-highlight-color: transparent;
+}
+.github-button img {
+  display: block;
+  width: var(--chrome-icon-size);
+  height: var(--chrome-icon-size);
+  object-fit: contain;
+}
+.topbar .github-button:hover { background: var(--chrome-button-hover); }
+.topbar .github-button:focus-visible {
+  outline: var(--chrome-focus-width) solid var(--accent);
+  outline-offset: var(--chrome-focus-inset);
+}

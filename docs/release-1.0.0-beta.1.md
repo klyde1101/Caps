@@ -1,5 +1,7 @@
 # Caps 1.0.0-beta.1 for Windows x64
 
+**[Download Caps-1.0.0-beta.1-Setup-x64.exe](https://github.com/klyde1101/Caps/releases/download/v1.0.0-beta.1/Caps-1.0.0-beta.1-Setup-x64.exe)**
+
 This first beta is ready for target-user testing. Pre-testing fixes and size cleanup remain part of v1.0.0-beta.1.
 
 ## Install
@@ -21,6 +23,6 @@ If you already installed beta.1, run this refreshed Setup again. Automatic updat
 
 Setup normally handles support downloads. For an offline installation, place the two content-addressed Support-Runtime parts listed in **SHA256SUMS.txt**, the Speech-Resources ZIP and Setup together. Keep both numbered parts intact. Models still download separately on first use.
 
-Older support files and the Legacy Setup download remain available for previously downloaded installers. They are not needed for the refreshed Setup. SHA256SUMS.txt covers the current build; Build.json records its source and asset fingerprints.
+This release contains one current build. Download the current Setup above; older copies of Setup reference superseded support files and should be replaced. SHA256SUMS.txt covers the current public downloads. The build verification record is kept internally.
 
 This beta is unsigned, so Windows may show an Unknown Publisher warning. Private privacy requests: klyde.penus1101@gmail.com.

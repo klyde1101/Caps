@@ -271,7 +271,7 @@ def main():
                 files.append(part)
     installer = build_installer(seven, files, names, archive, embedded)
     files += [installer, RELEASE / f"{PREFIX}-Speech-Resources.zip", *build_update(runtime)]
-    files.append(write_provenance(ROOT, Path(runtime), files))
+    write_provenance(ROOT, Path(runtime), files)  # Internal verification record; not a public download.
     (RELEASE / "SHA256SUMS.txt").write_text("".join(f"{digest(p)}  {p.name}\n" for p in files))
     remove_obsolete_parts(RELEASE, archive.name, {p.name for p in files})
     if split:

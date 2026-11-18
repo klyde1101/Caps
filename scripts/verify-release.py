@@ -82,7 +82,8 @@ console.log(runtime);"""
         if Path(name).name != name or name in listed:
             raise ValueError('Invalid checksum asset name.')
         listed[name] = checksum
-    if proof_path.name not in listed or digest(proof_path) != listed.pop(proof_path.name):
+    # Accept older public-proof manifests; new releases keep this record local.
+    if proof_path.name in listed and digest(proof_path) != listed.pop(proof_path.name):
         raise ValueError('Release provenance checksum differs.')
     if listed != proof['assets']:
         raise ValueError('Release assets do not match the build provenance.')

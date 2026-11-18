@@ -1,6 +1,8 @@
-"""Build a Windows portable archive and per-user installer from the verified folder build."""
+"""Build Windows installer runtime data and a per-user installer."""
 import argparse
+from bisect import bisect_right
 import hashlib
+import io
 import json
 import os
 from pathlib import Path, PureWindowsPath
@@ -18,6 +20,58 @@ EXCLUDES = ["__pycache__", "*.pyc", "*.onnx", "*.pt", "*.ckpt", "*.safetensors",
             "pytorch_model.bin*", "model.bin", "*.jit", "wav2vec*.pth"]
 
 
+class SplitArchive(io.RawIOBase):
+    """Read a ZIP split into ordinary numbered byte volumes without joining it."""
+
+    def __init__(self, paths):
+        super().__init__()
+        self.streams = []
+        self.offsets = [0]
+        self.position = 0
+        try:
+            for path in paths:
+                self.streams.append(path.open("rb"))
+                self.offsets.append(self.offsets[-1] + path.stat().st_size)
+        except Exception:
+            self.close()
+            raise
+
+    def seekable(self):
+        return True
+
+    def tell(self):
+        return self.position
+
+    def seek(self, offset, whence=0):
+        bases = {0: 0, 1: self.position, 2: self.offsets[-1]}
+        if whence not in bases or bases[whence] + offset < 0:
+            raise ValueError("Invalid split archive seek")
+        self.position = bases[whence] + offset
+        return self.position
+
+    def read(self, size=-1):
+        remaining = max(0, self.offsets[-1] - self.position)
+        if size >= 0:
+            remaining = min(remaining, size)
+        blocks = []
+        while remaining:
+            index = bisect_right(self.offsets, self.position) - 1
+            stream = self.streams[index]
+            stream.seek(self.position - self.offsets[index])
+            block = stream.read(min(remaining, self.offsets[index + 1] - self.position))
+            if not block:
+                raise EOFError("Truncated runtime archive volume")
+            blocks.append(block)
+            self.position += len(block)
+            remaining -= len(block)
+        return b"".join(blocks)
+
+    def close(self):
+        for stream in self.streams:
+            stream.close()
+        super().close()
+
+
 def digest(path):
     with path.open("rb") as stream:
         return hashlib.file_digest(stream, "sha256").hexdigest()
@@ -31,17 +85,20 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--seven", required=True)
     parser.add_argument("--makensis", help=argparse.SUPPRESS)
-    parser.add_argument("--prepared-zip", action="store_true",
-                        help="Use the completed portable ZIP")
+    prepared = parser.add_mutually_exclusive_group()
+    prepared.add_argument("--prepared-zip", action="store_true",
+                          help="Use the completed installer runtime ZIP")
+    prepared.add_argument("--prepared-parts", action="store_true",
+                          help="Rebuild Setup from completed numbered runtime ZIP parts")
     args = parser.parse_args()
     seven = Path(args.seven).resolve()
     RELEASE.mkdir(parents=True, exist_ok=True)
-    archive = RELEASE / f"{PREFIX}-Portable-x64.zip"
+    archive = RELEASE / f"{PREFIX}-Runtime-x64.zip"
     runtime = run("node", "--input-type=module", "-e",
                   "import {launcherRuntime} from './scripts/clean-project.mjs'; console.log(await launcherRuntime('Caps.exe',process.cwd()))",
                   capture_output=True, text=True).stdout.strip()
     run("node", "scripts/verify-windows-package.mjs", runtime, "node_modules/electron/dist", "-", str(ROOT))
-    if not args.prepared_zip:
+    if not args.prepared_zip and not args.prepared_parts:
         with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED, compresslevel=1) as payload:
             payload.write(ROOT / "Caps.exe", "Caps.exe")
             for base in (Path(runtime), ROOT / "whisperx"):
@@ -51,22 +108,28 @@ def main():
                         if not any(fnmatch(name, pattern) for pattern in EXCLUDES):
                             path = Path(directory) / name
                             payload.write(path, path.relative_to(ROOT))
-    with zipfile.ZipFile(archive) as payload:
+    parts = sorted(RELEASE.glob(archive.name + ".[0-9][0-9][0-9]")) if args.prepared_parts else []
+    if args.prepared_parts and (not parts or any(
+            p.name != archive.name + f".{index:03}" or p.stat().st_size == 0
+            for index, p in enumerate(parts, 1))):
+        raise ValueError("Missing or non-contiguous installer runtime ZIP parts")
+    with (SplitArchive(parts) if args.prepared_parts else archive.open("rb")) as source, zipfile.ZipFile(source) as payload:
         names = [PureWindowsPath(name) for name in payload.namelist()]
         for required in ("Caps.exe", Path(runtime).relative_to(ROOT).as_posix()+"/resources/app.asar",
                          "whisperx/cpu/python/python.exe", "whisperx/cuda/python/python.exe", "whisperx/ffmpeg/ffmpeg.exe"):
             payload.getinfo(required)
         if payload.testzip() is not None:
-            raise ValueError("Portable ZIP integrity check failed.")
+            raise ValueError("Installer runtime ZIP integrity check failed.")
     if not names or any(p.parts[0] not in ("Caps.exe", "dist", "whisperx") or
                         any(p.match(pattern) for pattern in EXCLUDES) or p.is_absolute() or ".." in p.parts
                         for p in names):
         raise ValueError("Unexpected release archive contents")
     # Leave headroom for the installer wrapper and GitHub's per-asset size limit.
     limit = 1900 * 1024**2
-    embedded = archive.stat().st_size < limit
-    files = [archive]
-    split = archive.stat().st_size >= 2 * 1024**3
+    archive_size = sum(p.stat().st_size for p in parts) if args.prepared_parts else archive.stat().st_size
+    embedded = not args.prepared_parts and archive_size < limit
+    files = parts if args.prepared_parts else [archive]
+    split = not args.prepared_parts and archive_size >= 2 * 1024**3
     if split:
         files = []
         with archive.open("rb") as source:
@@ -98,7 +161,7 @@ def main():
             if embedded:
                 with archive.open("rb") as source:
                     shutil.copyfileobj(source, output, 4 * 1024**2)
-            output.write((archive.stat().st_size if embedded else 0).to_bytes(8, "little"))
+            output.write((archive_size if embedded else 0).to_bytes(8, "little"))
     files += [installer, RELEASE / f"{PREFIX}-Speech-Resources.zip"]
     (RELEASE / "SHA256SUMS.txt").write_text("".join(f"{digest(p)}  {p.name}\n" for p in files))
     if split:

@@ -2,7 +2,7 @@
 
 Offline Windows caption editing and generation using WhisperX. Supported models: Large v3 Turbo and Small. Retired Canary code and Smart Mode tools/instructions are archived under docs/archive, outside the active application path.
 
-Download the Windows installer or portable version from [GitHub Releases](https://github.com/klyde1101/Caps/releases). The portable version consists of three numbered ZIP parts: download all three into one folder and extract the .001 file with 7-Zip. The installer downloads these parts automatically, or uses them locally when placed beside Setup. On first use, download a speech model in Settings; Caps also installs the shared speech resources before generation.
+Download and run the Windows **Setup-x64.exe** from [GitHub Releases](https://github.com/klyde1101/Caps/releases). Setup downloads and verifies its runtime data automatically and adds Caps to the Start menu. The numbered Runtime ZIP files are installer support data; users only need to download Setup. On first use, download a speech model in Settings; Caps also installs the shared speech resources before generation. No separate portable distribution is offered.
 
 ## Distribution layout
 
@@ -32,7 +32,7 @@ Fresh runtime assembly: run scripts/bootstrap-whisperx-runtime.ps1 with uv insta
 
 Build the folder application with `npm run package:win`. The package is checked against source before publication. Calling `scripts/package-win.ps1` directly without `-Folder` creates a portable EXE instead.
 
-To assemble the full release, run `scripts/build-speech-resources.py` with the bundled Python first, rebuild the folder application so it includes the generated speech-resource manifest, then run `scripts/build-release.py --seven <path-to-7za.exe>`. This produces the full portable package, Setup, shared speech resources, and checksums in `dist/release/`. After testing, commit and push the matching sources to main, then run `scripts/publish-release.ps1` with an authenticated GitHub CLI. Publishing verifies every local and uploaded checksum before making the beta available; rerun the publisher to resume an interrupted draft.
+To assemble the full release, run `scripts/build-speech-resources.py` with the bundled Python first, rebuild the folder application so it includes the generated speech-resource manifest, then run `scripts/build-release.py --seven <path-to-7za.exe>`. This produces Setup, its runtime data, shared speech resources, and checksums in `dist/release/`. Use `--prepared-parts` to rebuild Setup from existing numbered Runtime ZIP parts without recompressing them. After testing, commit and push the matching sources to main, then run `scripts/publish-release.ps1` with an authenticated GitHub CLI. Publishing verifies every local and uploaded checksum before making the beta available; rerun the publisher to resume an interrupted draft.
 
 Every successful EXE rebuild runs guarded project cleanup after package verification. It keeps only the current release (plus any older build still in use), removes the legacy rollback launcher and unused recognized build folders, and clears only `data/runtime-verification`, `data/uv-cache`, and `data/electron-probe-runtime`. Settings, media, models, working Python runtimes, test evidence, source code, and development dependencies are retained. Failed builds do not trigger this cleanup. Preview cleanup with `node scripts/clean-project.mjs`; apply it with `--apply`. The latest cleanup report is saved to `data/logs/project-cleanup.json`.
 

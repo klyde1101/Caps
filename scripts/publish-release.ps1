@@ -19,7 +19,7 @@ try {
         $expectedAssets[$Matches[2]] = $expected
         $assets += $asset
     }
-    if ($assets.Count -lt 3) { throw 'The release needs both a portable package and an installer.' }
+    if ($assets.Count -lt 3) { throw 'The release needs installer runtime data and Setup.' }
     $expectedAssets['SHA256SUMS.txt'] = (Get-FileHash -LiteralPath $checksums).Hash.ToLowerInvariant()
     foreach ($asset in $assets) {
         if ((Get-Item -LiteralPath $asset).Length -ge 2GB) { throw "Release asset exceeds GitHub's size limit: $asset" }

@@ -6,11 +6,14 @@ This first beta is ready for target-user testing. Pre-testing fixes and size cle
 
 ## Install
 
-Download and run **Caps-1.0.0-beta.1-Setup-x64.exe**. Setup installs for your Windows account and downloads and verifies its support files. Allow at least 12 GB of free space, plus space for speech models downloaded on first use. Both CPU and CUDA speech processing are included.
+Download and run **Caps-1.0.0-beta.1-Setup-x64.exe**. Fresh installs default to `C:\Program Files\Caps`. Choose Browse to select a different parent folder. Windows may ask permission to create the default folder. Setup installs for your Windows account and verifies the support files as it downloads them. Allow at least 12 GB of free space, plus space for speech models downloaded on first use. Both CPU and CUDA speech processing are included.
 
 If you already installed beta.1, run this refreshed Setup again. Automatic updates select newer versions and do not replace an installation with the same version number.
 
 ## Changes
+
+- Fixed the installation path display and GitHub button hover area. Model downloads now start alongside shared speech resources and report partial file progress.
+- Reduced the runtime package by omitting upstream test suites.
 
 - Removed unused compiler files and duplicate FFmpeg executables, reducing the installed speech runtime by about 242 MiB and its download by about 88 MiB. CPU and CUDA transcription were checked after cleanup.
 - Added app updates under Settings > Updates. Updates install after Caps closes normally; turning automatic updates off cancels downloads and queued installation. Manual checks remain available.

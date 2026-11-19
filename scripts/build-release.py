@@ -199,6 +199,12 @@ def main():
             for base in (Path(runtime), ROOT / "whisperx"):
                 for directory, folders, filenames in os.walk(base):
                     folders[:] = [d for d in folders if d != "__pycache__"]
+                    # These distribution-specific test suites exercise the upstream
+                    # packages. Runtime helpers such as pandas.testing stay packaged.
+                    package_dir = Path(directory)
+                    if (package_dir.parent.name == "site-packages" and
+                            package_dir.name in {"pandas", "sympy", "scipy", "sklearn"}):
+                        folders[:] = [folder for folder in folders if folder != "tests"]
                     for name in filenames:
                         if not any(fnmatch(name, pattern) for pattern in EXCLUDES):
                             path = Path(directory) / name

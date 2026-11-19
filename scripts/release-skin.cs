@@ -25,6 +25,13 @@ static class InstalledPathCheck {
     }
 }
 
+static class UninstallLocation {
+    internal static string Read() {
+        using (var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Uninstall\Caps"))
+            return key == null ? null : key.GetValue("InstallLocation") as string;
+    }
+}
+
 static class Skin {
     internal static readonly Color Ground=Color.FromArgb(32,32,32),Surface=Color.FromArgb(43,43,43),Line=Color.FromArgb(58,58,58),
         Text=Color.White,Muted=Color.FromArgb(180,180,192),Accent=Color.FromArgb(148,132,255),
@@ -152,15 +159,15 @@ sealed class SetupLayout:Component {
         Stage=AddLabel(Card,"Installation folder",24,20,484,26,16,Skin.Text,FontStyle.Bold);
         Part=AddLabel(Card,"",24,47,484,24,14,Skin.Muted,FontStyle.Regular);
         Percent=AddLabel(Card,"",524,20,116,48,32,Skin.Text,FontStyle.Bold);Percent.TextAlign=ContentAlignment.MiddleRight;
-        Folder=new TextBox{Bounds=new Rectangle(24,58,616,24),Text=directory,BorderStyle=BorderStyle.None,BackColor=Skin.Surface,ForeColor=Skin.Text,Font=Skin.Font(14),ReadOnly=true,AccessibleName="Installation folder",TabIndex=3};Card.Controls.Add(Folder);
+        Folder=new TextBox{Bounds=new Rectangle(24,58,616,24),Text=directory,BorderStyle=BorderStyle.None,BackColor=Skin.Surface,ForeColor=Skin.Text,Font=Skin.Font(14),ReadOnly=true,AccessibleName="Installation folder",TabIndex=3};Card.Controls.Add(Folder);Folder.BringToFront();
         Progress=new CapsProgress{Bounds=new Rectangle(24,72,616,38),Visible=false,AccessibleName=removal?"Uninstall progress":"Installation progress"};Card.Controls.Add(Progress);
         Detail=AddLabel(Card,removal?"":downloadSize+" download",24,112,250,24,14,Skin.Stats,FontStyle.Regular);
         Rate=AddLabel(Card,"",274,112,366,24,14,Skin.Stats,FontStyle.Regular);Rate.TextAlign=ContentAlignment.MiddleRight;
         ErrorDetails=new TextBox{Bounds=new Rectangle(24,47,616,44),Multiline=true,ReadOnly=true,BorderStyle=BorderStyle.None,BackColor=Skin.Surface,ForeColor=Skin.Text,Font=Skin.Font(14),ScrollBars=ScrollBars.Vertical,Visible=false,AccessibleName=removal?"Uninstall error details":"Installation error details"};Card.Controls.Add(ErrorDetails);
-        Note=AddLabel(window,removal?"Your settings, downloaded models, and caption files are kept.":"ⓘ  No administrator access needed. Allow at least 12 GB of free space.",48,506,664,28,14,Skin.Muted,FontStyle.Regular);
+        Note=AddLabel(window,removal?"Your settings, downloaded models, and caption files are kept.":"ⓘ  Windows may ask permission to create the Caps folder. Allow at least 12 GB of free space.",48,506,664,28,14,Skin.Muted,FontStyle.Regular);
         DetailsLink=new LinkLabel{Bounds=new Rectangle(48,506,200,28),Text="Show details",Font=Skin.Font(14),LinkColor=Skin.Text,ActiveLinkColor=Skin.Accent,VisitedLinkColor=Skin.Text,Visible=false,TabIndex=4};window.Controls.Add(DetailsLink);
         window.Controls.Add(new Panel{Bounds=new Rectangle(48,551,664,1),BackColor=Color.FromArgb(51,51,51),TabStop=false});
-        Repository=Skin.RepositoryButton();Repository.Bounds=new Rectangle(48,568,152,44);window.Controls.Add(Repository);
+        Repository=Skin.RepositoryButton();Repository.Bounds=new Rectangle(48,568,TextRenderer.MeasureText(Repository.Text,Repository.Font).Width+50,44);window.Controls.Add(Repository);
         Secondary=new CapsButton(false){Bounds=new Rectangle(430,568,120,44),Text="Cancel",TabIndex=0};Primary=new CapsButton(true){Bounds=new Rectangle(562,568,150,44),Text=removal?"Uninstall Caps":"Install Caps",TabIndex=1};
         window.Controls.Add(Secondary);window.Controls.Add(Primary);
     }
@@ -229,7 +236,7 @@ sealed class CapsButton:Button {
         Color fill=primary?(!Enabled?Skin.Line:pressed?Color.FromArgb(130,115,230):hovered?Color.FromArgb(169,156,255):Skin.Accent):pressed?Color.FromArgb(38,38,38):hovered&&Enabled?Skin.Line:Quiet?Skin.Ground:Color.FromArgb(47,47,47);
         using(var p=Skin.Round(new RectangleF(.5f*s,.5f*s,Width-s,Height-s),6*s)){using(var b=new SolidBrush(fill))e.Graphics.FillPath(b,p);if(!primary&&!Quiet)using(var pen=new Pen(Color.FromArgb(74,74,74),s))e.Graphics.DrawPath(pen,p);}
         var bounds=ClientRectangle;var flags=TextFormatFlags.NoPadding|TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter|TextFormatFlags.NoPrefix|TextFormatFlags.SingleLine;
-        if(Image!=null){int size=(int)(18*s),gap=(int)(8*s),text=TextRenderer.MeasureText(e.Graphics,Text,Font,Size.Empty,flags).Width;int left=Quiet?0:(Width-size-gap-text)/2;
+        if(Image!=null){int size=(int)(18*s),gap=(int)(8*s),text=TextRenderer.MeasureText(e.Graphics,Text,Font,Size.Empty,flags).Width;int left=(Width-size-gap-text)/2;
             e.Graphics.DrawImage(Image,new Rectangle(left,(Height-size)/2,size,size));bounds=new Rectangle(left+size+gap,0,text,Height);}
         TextRenderer.DrawText(e.Graphics,Text,Font,bounds,!Enabled?Skin.Muted:primary?Skin.OnAccent:Quiet&&!hovered?Skin.Muted:Skin.Text,flags);
     }

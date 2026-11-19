@@ -47,7 +47,9 @@ export function renderModelDownload(card, download, { installed, busy, jobRunnin
   // A native progress element draws deterministically without animation/shimmer.
   progress.value = percent;
   const count = download?.totalBytes ? `${formatBytes(download.bytes ?? 0)} of ${formatBytes(download.totalBytes)}` : 'Checking download size';
-  const timing = download?.speed > 0 ? `${formatBytes(download.speed)}/s \u00b7 ${formatTime(download.eta)}` : state === 'verifying' ? 'Verifying' : 'Preparing';
+  const timing = download?.speed > 0 ? `${formatBytes(download.speed)}/s \u00b7 ${formatTime(download.eta)}` : state === 'verifying' ? 'Verifying'
+    : state === 'downloading' && download.totalBytes > 0 && download.bytes >= download.totalBytes ? 'Finishing speech setup'
+    : state === 'downloading' ? 'Waiting for data' : 'Preparing';
   card.querySelector('[data-bytes]').textContent = count;
   card.querySelector('[data-rate]').textContent = timing;
   progress.setAttribute('aria-valuetext', `${percent}%, ${count}, ${timing}`);

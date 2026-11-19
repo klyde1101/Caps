@@ -10,7 +10,7 @@ using System.Windows.Forms;
 using Microsoft.Win32;
 
 static class UninstallProgram {
-    internal static readonly string Root=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),@"Programs\Caps");
+    internal static readonly string Root=UninstallLocation.Read() ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),@"Programs\Caps");
     [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
     [STAThread] static int Main(string[] args) {
         try {

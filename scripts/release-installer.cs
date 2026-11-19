@@ -33,7 +33,44 @@ public sealed class InstallProgress {
 }
 static class Setup {
     internal static readonly string Executable = Assembly.GetExecutingAssembly().Location;
-    internal static readonly string InstallDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Programs\Caps");
+    internal static readonly string DefaultDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Caps");
+    // The elevated process can only create this fixed, new directory. Setup itself stays per-user.
+    static int CreateDefaultDirectory(string account) {
+        var sid = new System.Security.Principal.SecurityIdentifier(account);
+        var permissions = new System.Security.AccessControl.DirectorySecurity();
+        permissions.SetAccessRuleProtection(true, false);
+        var inherit = System.Security.AccessControl.InheritanceFlags.ContainerInherit |
+            System.Security.AccessControl.InheritanceFlags.ObjectInherit;
+        foreach (var identity in new[] {sid, new System.Security.Principal.SecurityIdentifier("S-1-5-18"),
+                new System.Security.Principal.SecurityIdentifier("S-1-5-32-544")}) {
+            permissions.AddAccessRule(new System.Security.AccessControl.FileSystemAccessRule(identity,
+                System.Security.AccessControl.FileSystemRights.FullControl, inherit,
+                System.Security.AccessControl.PropagationFlags.None, System.Security.AccessControl.AccessControlType.Allow));
+        }
+        // CreateDirectoryW fails if the name already exists, including junctions.
+        byte[] descriptor = permissions.GetSecurityDescriptorBinaryForm();
+        var pinned = GCHandle.Alloc(descriptor, GCHandleType.Pinned);
+        try {
+            var attributes = new DirectoryAttributes();
+            attributes.Size = Marshal.SizeOf(attributes);
+            attributes.Descriptor = pinned.AddrOfPinnedObject();
+            return CreateDirectoryW(DefaultDirectory,ref attributes) ? 0 : Marshal.GetLastWin32Error();
+        } finally { pinned.Free(); }
+    }
+    [StructLayout(LayoutKind.Sequential)] struct DirectoryAttributes { internal int Size; internal IntPtr Descriptor; internal int Inherit; }
+    [DllImport("kernel32.dll",CharSet=CharSet.Unicode,ExactSpelling=true,SetLastError=true)]
+    static extern bool CreateDirectoryW(string path,ref DirectoryAttributes attributes);
+    internal static void PrepareDirectory(string destination) {
+        if (string.Equals(destination,DefaultDirectory,StringComparison.OrdinalIgnoreCase) && !Directory.Exists(destination)) {
+            string sid = System.Security.Principal.WindowsIdentity.GetCurrent().User.Value;
+            using (var helper = Process.Start(new ProcessStartInfo(Executable,"--create-default-directory " + sid) {
+                UseShellExecute=true, Verb="runas" })) {
+                helper.WaitForExit();
+                if (helper.ExitCode != 0) throw new IOException("Could not create the Caps folder. Choose a different location.");
+            }
+        } else Directory.CreateDirectory(destination);
+    }
+    internal static readonly string InstallDirectory = UninstallLocation.Read() ?? DefaultDirectory;
     internal static readonly PayloadManifest Payload = ReadPayload();
     static readonly byte[] Footer = Encoding.ASCII.GetBytes("CAPS_PAYLOAD_V1!");
     [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
@@ -192,6 +229,7 @@ static class Setup {
         } finally {try {Directory.Delete(work,true);} catch(IOException) {} catch(UnauthorizedAccessException) {}}
     }
     [STAThread] static int Main(string[] args) {
+        if(args.Length==2 && args[0]=="--create-default-directory") return CreateDefaultDirectory(args[1]);
         if(args.Length==2 && args[0]=="--extract-to") {
             string destination=Path.GetFullPath(args[1]), log=destination+".setup-progress.log"; object gate=new object();
             try {
@@ -208,6 +246,8 @@ static class Setup {
 }
 sealed class InstallerWindow:SetupWindow {
     readonly SetupLayout layout;
+    readonly Button browse;
+    string destination = Setup.InstallDirectory;
     readonly string preview;
     readonly Label heading,description,note,stage,percent,detail,part,rate;
     readonly SetupSteps steps;
@@ -227,11 +267,26 @@ sealed class InstallerWindow:SetupWindow {
         heading=layout.Heading;description=layout.Description;note=layout.Note;stage=layout.Stage;
         percent=layout.Percent;detail=layout.Detail;part=layout.Part;rate=layout.Rate;steps=layout.Steps;
         folder=layout.Folder;errorDetails=layout.ErrorDetails;progress=layout.Progress;
+        folder.Width = 455;
+        browse = new CapsButton(false) { Text = "Browse…", AccessibleName = "Choose installation folder",
+            Bounds = new Rectangle(504, 48, 135, 40) };
+        layout.Card.Controls.Add(browse);
+        browse.BringToFront();
+        browse.Click += (sender, args) => {
+            using (var picker = new FolderBrowserDialog { Description = "Choose a parent folder for Caps." }) {
+                if (picker.ShowDialog(this) != DialogResult.OK) return;
+                string selected = picker.SelectedPath;
+                destination = string.Equals(Path.GetFileName(selected), "Caps", StringComparison.OrdinalIgnoreCase)
+                    ? selected : Path.Combine(selected, "Caps");
+                folder.Text = destination;
+            }
+        };
+        folder.VisibleChanged += (sender,args) => browse.Visible = folder.Visible;
         primary=layout.Primary;secondary=layout.Secondary;detailsLink=layout.DetailsLink;
         errorDetails.Bounds=new Rectangle(24,20,616,116);
         detailsLink.LinkClicked+=(s,e)=>{errorDetails.Visible=!errorDetails.Visible;errorDetails.BringToFront();detailsLink.Text=errorDetails.Visible?"Hide details":"Show details";};
         AcceptButton=primary;
-        primary.Click+=(s,e)=>{if(complete) {if(preview==null)Process.Start(new ProcessStartInfo(Path.Combine(Setup.InstallDirectory,"Caps.exe")) {WorkingDirectory=Setup.InstallDirectory});Close();}
+        primary.Click+=(s,e)=>{if(complete) {if(preview==null)Process.Start(new ProcessStartInfo(Path.Combine(destination,"Caps.exe")) {WorkingDirectory=destination});Close();}
             else if(preview!=null)Preview("download");else StartInstall();};
         secondary.Click+=(s,e)=>{if(busy)StopInstall();else Close();};
         FormClosing+=(s,e)=>{if(busy){e.Cancel=true;StopInstall();}};
@@ -241,6 +296,24 @@ sealed class InstallerWindow:SetupWindow {
     internal static string Bytes(double n) {return n>=1024*1024*1024?(n/(1024*1024*1024)).ToString("0.00",CultureInfo.InvariantCulture)+" GB":(n/(1024*1024)).ToString("0.0",CultureInfo.InvariantCulture)+" MB";}
     void StopInstall() {cancellation.Cancel();secondary.Enabled=false;note.Text="Stopping installation\u2026";}
     void StartInstall() {
+        try {
+            InstalledPathCheck.Validate(destination);
+            if (Directory.Exists(destination) && Array.Exists(Directory.GetFileSystemEntries(destination), entry =>
+                    !string.Equals(Path.GetFileName(entry),"data",StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(Path.GetFileName(entry),"models",StringComparison.OrdinalIgnoreCase)) &&
+                !string.Equals(destination, UninstallLocation.Read(), StringComparison.OrdinalIgnoreCase))
+                throw new IOException("Choose an empty Caps folder or your registered Caps installation.");
+            string registered = UninstallLocation.Read();
+            if (registered != null && File.Exists(Path.Combine(registered,"Uninstall-Caps.exe")) &&
+                !string.Equals(destination, registered, StringComparison.OrdinalIgnoreCase))
+                throw new IOException("Uninstall the existing copy before choosing another folder.");
+            Setup.PrepareDirectory(destination);
+            using (new FileStream(Path.Combine(destination, Guid.NewGuid().ToString("N")), FileMode.CreateNew,
+                FileAccess.Write, FileShare.None, 1, FileOptions.DeleteOnClose)) {}
+        } catch (Exception error) {
+            MessageBox.Show(this,error.Message,"Choose an installation folder",MessageBoxButtons.OK,MessageBoxIcon.Information);
+            return;
+        }
         cancellation=new CancellationTokenSource();busy=true;complete=false;primary.Enabled=false;primary.Text="Installing...";secondary.Enabled=true;secondary.Text="Cancel";
         folder.Visible=false;errorDetails.Visible=false;detailsLink.Visible=false;note.Visible=true;
         steps.Current=0;progress.Failed=false;
@@ -248,7 +321,7 @@ sealed class InstallerWindow:SetupWindow {
         clock.Restart();estimate.Reset();currentStage="";
         ApplyProgress(new InstallProgress {Stage="prepare",Message="Connecting to the release downloads"});
         Task.Factory.StartNew(()=>{
-            Exception failure=null;try{Setup.Install(Setup.InstallDirectory,true,cancellation.Token,Report);}catch(Exception e){failure=e;}
+            Exception failure=null;try{Setup.Install(destination,true,cancellation.Token,Report);}catch(Exception e){failure=e;}
             if(!IsDisposed)BeginInvoke((Action)(()=>Finish(failure)));
         });
     }

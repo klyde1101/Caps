@@ -32,6 +32,7 @@ if ($allAdjacent -and $files.Count -gt 1 -and $files[0].name -match '^(.*)\.001$
     if ($extraVolumes.Count) { $allAdjacent = $false }
 }
 $sources = @()
+$downloadHashes = @{}
 $completed = [long]0
 $index = 0
 $clock = [Diagnostics.Stopwatch]::StartNew()
@@ -50,6 +51,7 @@ foreach ($part in $files) {
         $request.Timeout = 30000
         $request.ReadWriteTimeout = 30000
         $response = $null; $inputFile = $null; $output = $null
+        $digest = [Security.Cryptography.SHA256]::Create()
         try {
             $response = $request.GetResponse()
             $inputFile = $response.GetResponseStream()
@@ -58,6 +60,7 @@ foreach ($part in $files) {
             $received = [long]0
             $lastReport = [long]0
             while (($read = $inputFile.Read($buffer,0,$buffer.Length)) -gt 0) {
+                [void]$digest.TransformBlock($buffer,0,$read,$buffer,0)
                 $output.Write($buffer,0,$read)
                 $received += $read
                 if ($received -gt [long]$part.size) { throw 'The runtime download is larger than expected.' }
@@ -67,9 +70,14 @@ foreach ($part in $files) {
                 }
             }
             if ($received -ne [long]$part.size) { throw 'The runtime download was interrupted. Please retry.' }
+            [void]$digest.TransformFinalBlock((New-Object byte[] 0),0,0)
+            $hash = [BitConverter]::ToString($digest.Hash).Replace('-','')
+            if ($hash -ne $part.sha256) { throw "Integrity check failed for $($part.name). Please retry Setup." }
+            $downloadHashes[$part.name] = $hash
             $output.Dispose(); $output = $null
             [IO.File]::Move($partial,$source)
         } finally {
+            $digest.Dispose()
             if ($output) { $output.Dispose() }
             if ($inputFile) { $inputFile.Dispose() }
             if ($response) { $response.Dispose() }
@@ -92,6 +100,11 @@ for ($i = 0; $i -lt $files.Count; $i++) {
     $part = $files[$i]
     $message = 'Checking runtime data - part {0} of {1}' -f ($i+1),$files.Count
     Report 'verify' $verified $total ($i+1) $files.Count $message
+    if ($downloadHashes.ContainsKey($part.name)) {
+        $verified += [long]$part.size
+        Report 'verify' $verified $total ($i+1) $files.Count $message
+        continue
+    }
     $algorithm = [Security.Cryptography.SHA256]::Create()
     $inputFile = [IO.File]::OpenRead($sources[$i])
     try {

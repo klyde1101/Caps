@@ -29,7 +29,7 @@ function manager(root, extra = {}) {
 async function writeComplete(directory) { for (const [name, text] of Object.entries(contents)) await writeFile(join(directory, name), text); }
 async function partial(directory) {
   const cache = join(directory, '.cache', 'huggingface', 'download'); await mkdir(cache, { recursive: true });
-  await writeFile(join(cache, 'model.bin.hash.incomplete'), 'partial data');
+  await writeFile(join(cache, 'mBG94Lz8EYH5gU8b5axgj2RF9Tk=.hash.incomplete'), 'partial data');
 }
 
 test('Hub manifests require exact sizes and required runtime files and never accept renderer paths', () => {

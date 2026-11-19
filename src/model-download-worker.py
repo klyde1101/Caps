@@ -1,4 +1,5 @@
 """Hidden, public Hub downloads. Arguments are supplied by Caps, never a shell."""
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import tempfile
 import urllib.request
@@ -70,18 +71,20 @@ def ensure_speech_resources(root, manifest, staging):
     with tempfile.TemporaryFile(dir=staging) as payload:
         with urllib.request.urlopen(manifest['url'], timeout=90) as response:
             import shutil
-            shutil.copyfileobj(response, payload)
+            shutil.copyfileobj(response, payload, length=1024 * 1024)
         with zipfile.ZipFile(payload) as archive:
             for name, target in missing.items():
                 target.parent.mkdir(parents=True, exist_ok=True)
                 with tempfile.NamedTemporaryFile(dir=target.parent, delete=False) as output:
                     temporary = Path(output.name)
                 try:
+                    digest = hashlib.sha256()
                     with archive.open(name) as source, temporary.open('wb') as output:
-                        shutil.copyfileobj(source, output)
-                    with temporary.open('rb') as stream:
-                        if hashlib.file_digest(stream, 'sha256').hexdigest() != manifest['files'][name]:
-                            raise ValueError('Downloaded speech resource failed verification: ' + name)
+                        while chunk := source.read(1024 * 1024):
+                            digest.update(chunk)
+                            output.write(chunk)
+                    if digest.hexdigest() != manifest['files'][name]:
+                        raise ValueError('Downloaded speech resource failed verification: ' + name)
                     os.replace(temporary, target)
                 finally:
                     temporary.unlink(missing_ok=True)
@@ -93,12 +96,16 @@ def main():
     sys.stdout = RedactedStream(sys.stdout)
     sys.stderr = RedactedStream(sys.stderr)
     from huggingface_hub import snapshot_download
-    if 'CAPS_SPEECH_RESOURCES' in os.environ:
-        ensure_speech_resources(Path(os.environ['CAPS_RESOURCES_ROOT']).resolve(),
-                                json.loads(os.environ['CAPS_SPEECH_RESOURCES']), destination)
-    # An anonymous, pinned public snapshot. No saved or inherited access token is used.
-    snapshot_download(repo_id=repo, revision=revision, local_dir=destination,
-                      allow_patterns=json.loads(files), token=False, max_workers=2)
+    # Shared speech files and the pinned model have independent destinations.
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        resources = None
+        if 'CAPS_SPEECH_RESOURCES' in os.environ:
+            resources = pool.submit(ensure_speech_resources, Path(os.environ['CAPS_RESOURCES_ROOT']).resolve(),
+                                    json.loads(os.environ['CAPS_SPEECH_RESOURCES']), destination)
+        snapshot_download(repo_id=repo, revision=revision, local_dir=destination,
+                          allow_patterns=json.loads(files), token=False, max_workers=2)
+        if resources is not None:
+            resources.result()
 
 
 if __name__ == '__main__':

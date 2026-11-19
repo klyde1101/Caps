@@ -47,6 +47,10 @@ class PreviewTest {
     foreach(Control aligned in new Control[]{layout.Logo,layout.Heading,layout.Description,layout.Repository})Check(aligned.Left==edge,"All content left edges must match");
     Check(layout.Steps.Left+layout.Steps.Inset==edge,"First step circle must share the content left edge");
     Check(layout.Version.Right==layout.Card.Right&&layout.Primary.Right==layout.Card.Right,"All content right edges must match");
+    if(state=="welcome"){
+      var field=layout.Folder;
+      Check(field.Parent.GetChildAtPoint(new Point(field.Left+2,field.Top+2))==field,"Path text must be in front of the stage subtitle");
+    }
     if(state=="download"||state=="remove")Check(cancel.Text=="Cancel","Running-state secondary label must be Cancel");
     if(removal){Check(layout.Note.Text=="Your settings, downloaded models, and caption files are kept.","One approved reassurance line");Check(layout.Part.Text.Length==0&&layout.Detail.Text.Length==0,"No duplicate reassurance in removal card");}
     Skin.MotionOverride=false;

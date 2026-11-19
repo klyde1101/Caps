@@ -50,8 +50,11 @@ export async function downloadBytes(directory, manifest) {
   try {
     for (const entry of await readdir(cache, { withFileTypes: true })) {
       if (!entry.isFile() || !entry.name.endsWith('.incomplete')) continue;
-      // Hugging Face prefixes incomplete files with their original filename.
-      const file = manifest.files.find((file) => entry.name.startsWith(file.name + '.'));
+      // The bundled Hub client hashes the metadata filename. Older clients used the plain filename.
+      const file = manifest.files.find(({ name }) => {
+        const prefix = createHash('sha1').update(name + '.metadata').digest('base64').replaceAll('+', '-').replaceAll('/', '_');
+        return entry.name.startsWith(prefix + '.') || entry.name.startsWith(name + '.');
+      });
       if (file && !existsSync(join(directory, file.name))) bytes += Math.min(file.size, (await stat(join(cache, entry.name))).size);
     }
   } catch (error) { if (error.code !== 'ENOENT') throw error; }
@@ -179,7 +182,7 @@ export class ModelDownloadManager {
     let manifest;
     try { const cached = JSON.parse(await readFile(join(directory, 'caps-manifest.json'), 'utf8'));
       manifest = parseHubManifest(id, { sha: cached.revision, siblings: cached.files.map((file) => ({ rfilename: file.name, size: file.size, lfs: file.sha256 ? { sha256: file.sha256 } : undefined })) });
-    } catch { manifest = await this.manifest(id, signal); }
+    } catch { manifest = this.catalog[id] ?? await this.manifest(id, signal); }
     this.catalog[id] = manifest;
     await writeFile(join(directory, 'caps-manifest.json.tmp'), JSON.stringify(manifest));
     await rename(join(directory, 'caps-manifest.json.tmp'), join(directory, 'caps-manifest.json'));
